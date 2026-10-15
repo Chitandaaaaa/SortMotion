@@ -2,6 +2,8 @@
 
 终端 CLI 风格的排序算法可视化器，**单文件 HTML**，零依赖、零构建 —— 直接用浏览器打开 `sort-visualizer.html` 就能跑。
 
+> **在线试玩**：https://chitandaaaaa.github.io/SortMotion/sort-visualizer.html
+
 黑底荧光绿 + CRT 扫描线 + macOS 窗口标题栏，把冒泡、选择、插入、快速、堆排序的每一步（比较 / 交换 / 枢轴 / 就位）逐帧可视化，支持单步回退、执行日志、GIF 导出和完赛烟花。
 
 ## 特性
@@ -90,7 +92,8 @@ AlgorithmRegistry.register(new ShellSort());
 ```
 SortMotion/
 ├── sort-visualizer.html   # 全部内容：样式、算法、可视化器、GIF 导出
-└── README.md
+├── README.md
+└── LICENSE
 ```
 
 ## 已知取舍
@@ -98,3 +101,7 @@ SortMotion/
 - GIF 结尾字幕里的「总耗时」是按时长折算的近似值，不是真实渲染耗时（离屏渲染是瞬时完成的）。
 - 视口高度低于 833px 时，底部日志面板会从 150px 起自动收缩，把高度让给展示区。
 - 1440p 及以上分辨率、且数据量为默认 20 时，受 24px 柱高上限影响，柱块只占约一半高度（上下对称留白）。需要更饱满的话可以调大或取消 `sort-visualizer.html` 中 `.vbar` 的 `max-height`。
+
+## 许可证
+
+[MIT](LICENSE)
