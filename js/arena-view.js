@@ -70,6 +70,14 @@ ArenaView.prototype.updateHead = function (arena) {
   this.statusEl.textContent = s;
 };
 
+/* 时长文案：超过 1 分钟显示成「x 分 y 秒」，比一堆秒数好读 */
+ArenaView.prototype.formatRaceMs = function (ms) {
+  var s = Math.round(ms / 1000);
+  if (s < 60) return "≈ " + s + " 秒跑完全程";
+  var m = Math.floor(s / 60), r = s % 60;
+  return "≈ " + m + " 分" + (r ? " " + r + " 秒" : "") + "跑完全程";
+};
+
 /* ---------- ① 选择面板 ---------- */
 
 ArenaView.prototype.showSetup = function (arena) {
@@ -147,6 +155,34 @@ ArenaView.prototype.showSetup = function (arena) {
   this.rngEl = rng;
   this.valEl = val;
 
+  // 速度：与主视图一致（1 最慢、100 最快），并直接显示换算出的比赛时长，
+  // 免得用户只看到个数字不知道到底多快
+  var rowS = document.createElement("div");
+  rowS.className = "arow";
+  rowS.appendChild(this.label("速度"));
+  var spd = document.createElement("input");
+  spd.type = "range";
+  spd.id = "arenaSpeed";
+  spd.min = String(CONFIG.arena.speed.min);
+  spd.max = String(CONFIG.arena.speed.max);
+  spd.value = String(arena.speed);
+  var sval = document.createElement("span");
+  sval.className = "aval";
+  sval.textContent = String(arena.speed);
+  var sms = document.createElement("span");
+  sms.className = "ahint";
+  spd.addEventListener("input", function () {
+    sval.textContent = spd.value;
+    arena.setSpeed(parseInt(spd.value, 10));
+  });
+  rowS.appendChild(spd);
+  rowS.appendChild(sval);
+  rowS.appendChild(sms);
+  wrap.appendChild(rowS);
+  this.spdEl = spd;
+  this.spdValEl = sval;
+  this.spdMsEl = sms;
+
   // 共用输入预览
   var rowD = document.createElement("div");
   rowD.className = "arow";
@@ -161,7 +197,7 @@ ArenaView.prototype.showSetup = function (arena) {
   var rowF = document.createElement("div");
   rowF.className = "arow astartrow";
   var hint = document.createElement("span");
-  hint.className = "ahint";
+  hint.className = "ahint amin";   // amin：便于测试单独定位，不靠 DOM 顺序
   rowF.appendChild(hint);
 
   var start = document.createElement("button");
@@ -192,6 +228,9 @@ ArenaView.prototype.refreshSetup = function (arena) {
   var self = this;
   if (this.rngEl) this.rngEl.value = String(arena.n);
   if (this.valEl) this.valEl.textContent = String(arena.n);
+  if (this.spdEl) this.spdEl.value = String(arena.speed);
+  if (this.spdValEl) this.spdValEl.textContent = String(arena.speed);
+  if (this.spdMsEl) this.spdMsEl.textContent = this.formatRaceMs(arena.raceTargetMs());
   if (this.dataEl) this.dataEl.textContent = "[" + arena.data.join(", ") + "]";
 
   var canStart = arena.canStart();
@@ -215,26 +254,39 @@ ArenaView.prototype.refreshPicker = function (arena) {
 
 /* ---------- ② 竞赛网格 ---------- */
 
-/* 列数：按容器尺寸反推，保证所有算法都能同屏放下（不出现滚动）。
-   17 是质数排不成整网格，所以会出现若干空格，这是正常的。 */
-ArenaView.prototype.pickCols = function (count) {
+/* 网格尺寸。关键约束：单元格大小【与参赛数量无关】——
+   2 个算法和 17 个算法必须一样大，不能因为选得少就把格子拉满屏。
+   做法：尺寸按「全部算法」(total) 的排布算一次，实际只填 count 个格子，
+   整体居中、不铺满。17 是质数排不成整网格，会有若干空位，属正常。 */
+ArenaView.prototype.gridMetrics = function (count, total) {
   var A = CONFIG.arena;
+  var gap = A.gridGap;
   var w = this.bodyEl.clientWidth || 1000;
   var h = this.bodyEl.clientHeight || 600;
-  var byWidth = Math.max(1, Math.floor(w / A.cellMinWidth));
-  var rowsFit = Math.max(1, Math.floor(h / A.cellMinHeight));
-  var byHeight = Math.ceil(count / rowsFit);
-  var cols = Math.max(byWidth, byHeight);
-  return Math.max(1, Math.min(cols, count, A.maxCols));
+  var all = Math.max(total || count, 1);
+
+  // 宽度：固定值，只有窗口特别窄时才收一点（与数量无关）
+  var cw = Math.min(A.cellWidth, Math.max(140, w));
+  var colsForAll = Math.max(1, Math.min(Math.floor((w + gap) / (cw + gap)), all, A.maxCols));
+  var rowsForAll = Math.ceil(all / colsForAll);
+  // 高度：按「全部算法」需要的行数反推 → 任何数量下高度都一样
+  var ch = Math.floor((h - (rowsForAll - 1) * gap) / rowsForAll);
+  ch = Math.max(A.cellMinHeight, Math.min(A.cellHeight, ch));
+
+  var cols = Math.max(1, Math.min(Math.floor((w + gap) / (cw + gap)), count, A.maxCols));
+  return { cols: cols, cw: cw, ch: ch, gap: gap };
 };
 
 ArenaView.prototype.showRace = function (arena) {
   this.bodyEl.innerHTML = "";
-  var cols = this.pickCols(arena.racers.length);
+  var m = this.gridMetrics(arena.racers.length, AlgorithmRegistry.getAll().length);
 
   var grid = document.createElement("div");
   grid.className = "agrid";
-  grid.style.gridTemplateColumns = "repeat(" + cols + ", minmax(0, 1fr))";
+  // 用固定像素而不是 1fr：1fr 会把格子拉伸铺满，选 2 个算法时就会变成两个巨无霸
+  grid.style.gridTemplateColumns = "repeat(" + m.cols + ", " + m.cw + "px)";
+  grid.style.gridAutoRows = m.ch + "px";
+  grid.style.gap = m.gap + "px";
 
   arena.racers.forEach(function (rc) {
     var cell = document.createElement("div");
@@ -320,13 +372,20 @@ ArenaView.prototype.removeReady = function () {
   if (el && el.parentNode) el.parentNode.removeChild(el);
 };
 
+ArenaView.prototype.removeResult = function () {
+  var el = this.bodyEl.querySelector(".aresult");
+  if (el && el.parentNode) el.parentNode.removeChild(el);
+};
+
 ArenaView.prototype.drawLanes = function (arena) {
   if (!arena.racers.length || !arena.racers[0].canvas) return;
   var colors = readThemeColors();
+  // 结算阶段把柱子画淡：直接改画布 alpha，而不是在整屏上叠黑纱
+  var ghost = arena.phase === "result" ? CONFIG.arena.resultGhostAlpha : 1;
 
   for (var i = 0; i < arena.racers.length; i++) {
     var rc = arena.racers[i];
-    this.drawCell(rc, colors);
+    this.drawCell(rc, colors, ghost);
 
     rc.cell.classList.toggle("done", !!rc.done);
     rc.rankEl.textContent = rc.done ? String(rc.rank) : "·";
@@ -345,7 +404,7 @@ ArenaView.prototype.drawLanes = function (arena) {
   }
 };
 
-ArenaView.prototype.drawCell = function (rc, colors) {
+ArenaView.prototype.drawCell = function (rc, colors, alpha) {
   var cv = rc.canvas;
   var w = cv.clientWidth;
   var h = cv.clientHeight;
@@ -364,8 +423,10 @@ ArenaView.prototype.drawCell = function (rc, colors) {
   if (!rc.ctx) return;
 
   rc.ctx.clearRect(0, 0, w, h);
+  rc.ctx.globalAlpha = (alpha === undefined ? 1 : alpha);
   drawMiniBars(rc.ctx, rc.state.data, rc.state.sortedSet, rc.state.highlight,
     { x: 0, y: 0, w: w, h: h }, colors);
+  rc.ctx.globalAlpha = 1;
 };
 
 /* ---------- ③ 结算：全屏排行榜（背景虚化）----------
@@ -377,7 +438,9 @@ ArenaView.prototype.showResult = function (arena) {
   var self = this;
   var order = arena.result.order;
   var step = CONFIG.arena.resultStepMs;
-  this.bodyEl.innerHTML = "";
+  // 关键：这里【不能】清空 bodyEl —— 底下的 m×n 网格必须留着。
+  // 结算层是半透明覆盖，用户要能同时看到排行榜和已完赛的柱状图。
+  this.removeResult();
 
   var wrap = document.createElement("div");
   wrap.className = "aresult";

@@ -318,7 +318,7 @@ function multisetEq(a, b) {
     arena.view.refreshPicker(arena);
     assert(panelStart.disabled, "只选 1 个时面板 START 应禁用");
     assert(doc.querySelector("#arenaTools .pbtn").disabled, "只选 1 个时顶栏 START 应禁用");
-    assert(/至少选 2 个/.test(doc.querySelector("#arenaBody .ahint").textContent), "缺少最少算法数提示");
+    assert(/至少选 2 个/.test(doc.querySelector("#arenaBody .amin").textContent), "缺少最少算法数提示");
 
     // 换 4 个算法的阵容（含非比较类），并把规模压到最小：
     // 4 个正好覆盖「前三名放大 + 其余进小排行列表」两条渲染分支
@@ -382,6 +382,14 @@ function multisetEq(a, b) {
     // 结算：全屏排行榜，展示全部参赛者
     const wrap = doc.querySelector("#arenaBody .aresult");
     assert(wrap, "结算缺少 .aresult 容器");
+    // 回归：结算层是半透明覆盖，底下必须还留着 m×n 网格，用户要能看见已完赛的柱状图。
+    // （之前 showResult 里有一句 bodyEl.innerHTML = ""，把网格整个清掉了 —— 这条断言就是为它加的）
+    const cellsUnderResult = doc.querySelectorAll("#arenaBody .acell");
+    assert(cellsUnderResult.length === arena.racers.length,
+      `结算时底下网格应保留 ${arena.racers.length} 格，实际 ${cellsUnderResult.length}（被清空了？）`);
+    assert(doc.querySelectorAll("#arenaBody .acell canvas").length === arena.racers.length,
+      "结算时每个格子应仍带 canvas");
+    assert(win.getComputedStyle(wrap).position === "absolute", "结算层应绝对定位覆盖在网格之上（不占位、不挤掉网格）");
     assert(!doc.querySelector("#arenaBody .aresult-head"), "结算标题行应已删除");
     assert(!/按完赛用时排名/.test(doc.body.textContent), "「按完赛用时排名」文案应已删除");
     assert(doc.querySelector("#arenaBody .apodium"), "结算缺少前三名区域");
@@ -431,6 +439,124 @@ function multisetEq(a, b) {
     arena.exit();
     assert(!arena.open, "关闭后 open 仍为 true");
     assert(doc.getElementById("arena").style.display === "none", "竞技场弹层未隐藏");
+  });
+
+  check("网格单元格大小与参赛数量无关（2 个和 17 个一样大，且居中不铺满）", () => {
+    const arena = V.arena;
+    const total = win.AlgorithmRegistry.getAll().length;
+
+    const m2 = arena.view.gridMetrics(2, total);
+    const m17 = arena.view.gridMetrics(17, total);
+    assert(m2.cw === m17.cw, `列宽应相同：2 个时 ${m2.cw} vs 17 个时 ${m17.cw}`);
+    assert(m2.ch === m17.ch, `行高应相同：2 个时 ${m2.ch} vs 17 个时 ${m17.ch}`);
+    assert(m2.gap === m17.gap, "间距应相同");
+    // 选得少时不铺满：2 个算法就只占 2 列
+    assert(m2.cols === 2, `2 个算法时应只占 2 列，实际 ${m2.cols}`);
+    assert(m17.cols > m2.cols, "17 个算法时列数应更多");
+
+    // 实际渲染也要用固定像素，不能用 1fr（否则又会拉伸铺满）
+    arena.enter();
+    arena.applyPreset("contrast");
+    arena.prepare();
+    const g = doc.querySelector("#arenaBody .agrid");
+    assert(g.style.gridTemplateColumns.indexOf("px") > 0,
+      `列应使用固定像素而非 1fr，实际 ${g.style.gridTemplateColumns}`);
+    assert(g.style.gridAutoRows.indexOf("px") > 0, "行高应使用固定像素");
+    assert(win.getComputedStyle(g).justifyContent === "center", "网格应水平居中");
+    arena.exit();
+  });
+
+  check("结算时柱状图按 alpha 淡出（画布 alpha，而不是整屏黑纱）", () => {
+    // jsdom 里 canvas 没有布局尺寸，drawCell 会提前返回。这里给尺寸 + 一个记录型 ctx，
+    // 才能真的验证「结算阶段按 alpha 画」这件事。
+    Object.defineProperty(win.HTMLCanvasElement.prototype, "clientWidth",
+      { get: function () { return 200; }, configurable: true });
+    Object.defineProperty(win.HTMLCanvasElement.prototype, "clientHeight",
+      { get: function () { return 60; }, configurable: true });
+
+    const st = {
+      globalAlpha: 1,
+      alphas: [],
+      fillRect: function () { this.alphas.push(this.globalAlpha); }
+    };
+    const rec = new Proxy(st, {
+      get: function (t, k) {
+        if (k === "measureText") return function () { return { width: 0 }; };
+        if (k in t) return t[k];
+        return function () {};
+      },
+      set: function (t, k, v) { t[k] = v; return true; }
+    });
+    win.HTMLCanvasElement.prototype.getContext = function () { return rec; };
+
+    const arena = V.arena;
+    arena.enter();
+    arena.applyPreset("contrast");
+    arena.prepare();
+
+    // 起跑线 / 比赛中：不应淡出
+    st.alphas.length = 0;
+    arena.view.drawLanes(arena);
+    const racingAlpha = st.alphas[0];
+    assert(racingAlpha === 1, "比赛阶段柱状图不该淡出，实际 alpha=" + racingAlpha);
+
+    // 跑到结算
+    arena.start();
+    arena.stopLoop();
+    let g = 0;
+    while (arena.phase === "racing" && g < 20000) { arena.tick(); g++; }
+    assert(arena.phase === "result", "未进入结算");
+
+    st.alphas.length = 0;
+    arena.view.drawLanes(arena);
+    const resultAlpha = st.alphas[0];
+    assert(resultAlpha === 0.8, "结算时柱状图应淡到 80%，实际 alpha=" + resultAlpha);
+    assert(resultAlpha === win.CONFIG.arena.resultGhostAlpha, "应与 CONFIG.arena.resultGhostAlpha 一致");
+    // 画完要把 globalAlpha 复原，否则会污染后续绘制
+    assert(rec.globalAlpha === 1, "绘制结束后 globalAlpha 应复原为 1");
+    arena.exit();
+  });
+
+  check("竞技场速度：滑块范围、时长换算、越慢越久", () => {
+    const arena = V.arena;
+    arena.enter();
+    // 固定到基准规模：时长会按 (n/nRef) 缩放，不固定的话端点值对不上
+    arena.setN(win.CONFIG.arena.nRef);
+    const spd = doc.getElementById("arenaSpeed");
+    assert(spd, "设置界面缺少速度滑块");
+    assert(Number(spd.min) === win.CONFIG.arena.speed.min &&
+      Number(spd.max) === win.CONFIG.arena.speed.max, "速度滑块范围不对");
+
+    arena.setSpeed(win.CONFIG.arena.speed.max);
+    const fastMs = arena.raceTargetMs();
+    arena.setSpeed(win.CONFIG.arena.speed.min);
+    const slowMs = arena.raceTargetMs();
+    assert(slowMs > fastMs, `速度越小应越慢：${slowMs} vs ${fastMs}`);
+    assert(Math.abs(fastMs - win.CONFIG.arena.raceMs.fast) < 1, "最快时应等于 raceMs.fast");
+    assert(Math.abs(slowMs - win.CONFIG.arena.raceMs.slow) < 1, "最慢时应等于 raceMs.slow");
+
+    // 界面上要显示换算出的时长（否则用户只知道个数字，不知道到底多快）
+    const hint = doc.querySelector("#arenaBody .ahint").textContent;
+    assert(/跑完全程/.test(hint), "缺少时长提示，实际：" + hint);
+
+    // 回归：预估时长必须随【数据规模】变化 —— 时长恒定会把「大 n 时每秒推进暴涨」藏起来
+    const nSlider = doc.getElementById("arenaN");
+    const before = doc.querySelector("#arenaBody .ahint").textContent;
+    nSlider.value = String(win.CONFIG.arena.n.max);
+    nSlider.dispatchEvent(new win.Event("input", { bubbles: true }));
+    const after = doc.querySelector("#arenaBody .ahint").textContent;
+    assert(before !== after, `改数据规模后预估时长应更新，实际都是 ${before}`);
+    assert(arena.raceTargetMs() > 1000, "大 n 时时长应更长");
+    nSlider.value = String(win.CONFIG.arena.n.def);
+    nSlider.dispatchEvent(new win.Event("input", { bubbles: true }));
+
+    // 越慢时长越长，提示也要跟着变
+    arena.setSpeed(win.CONFIG.arena.speed.max);
+    const hintFast = doc.querySelector("#arenaBody .ahint").textContent;
+    assert(hintFast !== hint, "改速度后时长提示应更新");
+
+    arena.setSpeed(win.CONFIG.arena.speed.def);   // 还原，别拖慢后续用例
+    arena.exit();
   });
 
   check("全程没有未捕获异常 / console.error", () => {

@@ -35,6 +35,7 @@ function Arena(view, hooks) {
 
   this.picked = [];              // 参赛算法 name
   this.n = CONFIG.arena.n.def;
+  this.speed = CONFIG.arena.speed.def;
   this.data = [];
 
   this.racers = [];
@@ -114,6 +115,25 @@ Arena.prototype.setN = function (n) {
   this.view.refreshSetup(this);
 };
 
+Arena.prototype.setSpeed = function (v) {
+  var s = CONFIG.arena.speed;
+  this.speed = Math.max(s.min, Math.min(s.max, v | 0));
+  this.view.refreshSetup(this);
+};
+
+/* 全程时长(ms) = 速度换算出的基准时长 × (n / nRef)，再夹到上下限。
+   两个输入（速度、数据规模）在设置界面就能确定，所以界面上显示的预估
+   与实际开跑的时长【必然一致】—— 不会出现"预估不随数据量变"的误导。 */
+Arena.prototype.raceTargetMs = function () {
+  var s = CONFIG.arena.speed;
+  var t = CONFIG.arena.raceMs;
+  var c = CONFIG.arena.raceMsClamp;
+  var k = (this.speed - s.min) / Math.max(1, s.max - s.min);
+  var base = t.slow + (t.fast - t.slow) * k;
+  var scaled = base * (this.n / Math.max(1, CONFIG.arena.nRef));
+  return Math.max(c.min, Math.min(c.max, scaled));
+};
+
 Arena.prototype.newData = function () {
   var g = CONFIG.data;
   var out = [];
@@ -160,7 +180,7 @@ Arena.prototype.prepare = function () {
   for (var i = 0; i < this.racers.length; i++) {
     if (this.racers[i].steps.length > this.maxSteps) this.maxSteps = this.racers[i].steps.length;
   }
-  var targetFrames = Math.max(1, CONFIG.arena.targetMs / FRAME_MS);
+  var targetFrames = Math.max(1, this.raceTargetMs() / FRAME_MS);
   this.stepsPerFrame = this.maxSteps / targetFrames;
   this.carry = 0;
   this.frame = 0;

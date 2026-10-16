@@ -177,8 +177,12 @@ check("CONFIG.arena 定义了竞技场参数（规模上限与主视图一致）
   assert(a.max === CONFIG.count.max,
     `竞技场与主视图的规模上限应一致，实际 ${a.max} vs ${CONFIG.count.max}`);
   assert(a.max === 100, "数据规模上限应为 100");
-  assert(CONFIG.arena.targetMs > 0, "缺少比赛目标时长");
-  assert(CONFIG.arena.cellMinWidth > 0 && CONFIG.arena.cellMinHeight > 0, "缺少单元格下限");
+  assert(CONFIG.arena.raceMs && CONFIG.arena.raceMs.slow > CONFIG.arena.raceMs.fast &&
+    CONFIG.arena.raceMs.fast > 0, "缺少比赛时长区间 raceMs");
+  const sp = CONFIG.arena.speed;
+  assert(sp && sp.min >= 1 && sp.max > sp.min, "缺少速度区间");
+  assert(CONFIG.arena.cellWidth > 0 && CONFIG.arena.cellHeight > 0, "缺少单元格尺寸");
+  assert(CONFIG.arena.cellMinHeight > 0 && CONFIG.arena.gridGap >= 0, "缺少单元格下限/间距");
 });
 
 check("每个算法都自带展示代码（code）与行号映射（codeMap）", () => {
@@ -285,13 +289,12 @@ check("竞技场网格：列等宽 + 行等高，保证每个格子一样大", (
   assert(grid, "找不到 .agrid 规则");
   assert(cell, "找不到 .acell 规则");
 
-  // 列宽由 JS 写 repeat(cols, minmax(0,1fr)) 保证等宽；行高必须在 CSS 里等分，
-  // 否则隐式行高是 auto，不同行的格子会高矮不一 —— 这是「格子必须一样大」的关键。
-  // 必须是 minmax(0,1fr) 而非 1fr：1fr 的下限是内容最小高度，内容多了照样撑开。
-  assert(/grid-auto-rows\s*:\s*minmax\(0,\s*1fr\)/.test(grid[0]),
-    ".agrid 必须声明 grid-auto-rows:minmax(0,1fr)，否则各行高矮不一");
-  assert(/align-content\s*:\s*stretch/.test(grid[0]),
-    ".agrid 需要 align-content:stretch，让各行铺满容器高度");
+  // 单元格尺寸由 JS 写成固定像素（ArenaView.gridMetrics），CSS 里【不能】再用 1fr ——
+  // 1fr 会把格子拉伸铺满，参赛数量不同（2 个 vs 17 个）格子大小就会不同。
+  assert(!/grid-auto-rows\s*:\s*[^;]*1fr/.test(grid[0]),
+    ".agrid 不该用 1fr 拉伸行高 —— 单元格必须固定尺寸，与参赛数量无关");
+  assert(/justify-content\s*:\s*center/.test(grid[0]), ".agrid 需要水平居中");
+  assert(/align-content\s*:\s*center/.test(grid[0]), ".agrid 需要垂直居中");
   assert(/overflow\s*:\s*hidden/.test(cell[0]),
     ".acell 需要 overflow:hidden，避免内容把格子撑高");
   // 柱状图用 flex:1 + min-height:0，既不撑高也不塌陷
@@ -299,7 +302,7 @@ check("竞技场网格：列等宽 + 行等高，保证每个格子一样大", (
     ".acv 需要 flex:1 与 min-height:0");
 });
 
-check("竞技场结算：背景虚化 + 前三名逐个亮相 + 其余整块出现", () => {
+check("竞技场结算：半透明不虚化 + 前三名逐个亮相 + 其余整块出现", () => {
   const css = fs.readFileSync(path.join(ROOT, "styles.css"), "utf8");
   const res = css.match(/\n\.aresult\{[\s\S]*?\n\}/);
   const pod = css.match(/\n\.apodium-row\{[\s\S]*?\n\}/);
@@ -308,15 +311,12 @@ check("竞技场结算：背景虚化 + 前三名逐个亮相 + 其余整块出�
   assert(pod, "找不到 .apodium-row 规则");
   assert(rest, "找不到 .arest 规则");
 
-  // 覆盖在网格之上并做背景虚化
+  // 覆盖在网格之上
   assert(/position\s*:\s*absolute/.test(res[0]), ".aresult 应绝对定位覆盖在网格之上");
-  assert(/backdrop-filter\s*:\s*blur/.test(res[0]), ".aresult 需要 backdrop-filter 实现背景虚化");
   // 前三名与其余名次都靠 --d 控制出现时机（DOM 一次建全，延迟只是视觉效果）
   assert(/animation-delay\s*:\s*var\(--d/.test(pod[0]), ".apodium-row 需用 --d 逐个亮相");
   assert(/animation-delay\s*:\s*var\(--d/.test(rest[0]), ".arest 需用 --d 控制整块出现的时机");
-  // 背景 50% 透明
-  assert(/background\s*:\s*rgba\(0,\s*0,\s*0,\s*\.5\)/.test(res[0]),
-    ".aresult 背景应为 rgba(0,0,0,.5)（50% 透明）");
+
   // 一屏放完：容器不滚动 + 其余名次行等分剩余高度
   assert(/overflow\s*:\s*hidden/.test(res[0]), ".aresult 需要 overflow:hidden，保证一屏放完不出现下拉");
   assert(/flex\s*:\s*1/.test(rest[0]), ".arest 需要 flex:1 吃掉剩余高度");
@@ -334,10 +334,28 @@ check("竞技场结算：背景虚化 + 前三名逐个亮相 + 其余整块出�
   assert(astat && /text-align\s*:\s*right/.test(astat[0]), ".astat 应右对齐");
   const rst = css.match(/\.arest-row \.st\{[^}]*\}/);
   assert(rst && /text-align\s*:\s*right/.test(rst[0]), ".arest-row .st 应右对齐");
-  // 背景 50% 透明 + 轻虚化，要能隐约看见底下的网格
-  const blur = res[0].match(/backdrop-filter\s*:\s*blur\((\d+)px\)/);
-  assert(blur, ".aresult 缺少 backdrop-filter");
-  assert(Number(blur[1]) <= 4, `虚化过强（${blur[1]}px），会看不清底下的网格`);
+  // 柱状图要看得见、但只到 50%：靠画布 alpha 淡出，而不是叠一层黑纱
+  // （黑纱会把格子底色一起压灰，整体发闷）
+  assert(!/backdrop-filter\s*:\s*blur\(/.test(res[0]),
+    ".aresult 不该虚化 —— 会看不清底下的柱状图");
+  assert(/background\s*:\s*transparent/.test(res[0]),
+    ".aresult 不该叠整屏黑纱 —— 应改为柱状图本身按 alpha 淡出");
+  assert(typeof CONFIG.arena.resultGhostAlpha === "number" &&
+    CONFIG.arena.resultGhostAlpha > 0 && CONFIG.arena.resultGhostAlpha <= 1,
+    "CONFIG.arena.resultGhostAlpha 应在 (0,1]");
+  assert(CONFIG.arena.resultGhostAlpha === 0.8,
+    "结算时柱状图应淡到 80%，实际 " + CONFIG.arena.resultGhostAlpha);
+  // 可读性靠文字光晕，而不是靠糊背景
+  assert(/text-shadow/.test(css), "排行榜文字需要 text-shadow 光晕，保证压在柱状图上可读");
+  // 就绪层不能有整屏遮罩（否则会压暗已初始化的柱子），按钮要自带实底
+  const ready = css.match(/\n\.aready\{[\s\S]*?\n\}/);
+  assert(ready, "找不到 .aready 规则");
+  assert(/background\s*:\s*transparent/.test(ready[0]),
+    ".aready 不该有整屏遮罩 —— 会压暗已初始化的柱状图");
+  const rstart = css.match(/\n\.aready-start\{[\s\S]*?\n\}/);
+  assert(rstart, "找不到 .aready-start 规则");
+  assert(/background\s*:\s*var\(--panel\)/.test(rstart[0]),
+    ".aready-start 需要实底，才能在柱状图上独立可读");
 
   // 配置面板：水平居中，但靠上（不垂直居中）
   const setup = css.match(/\n\.asetup\{[\s\S]*?\n\}/);

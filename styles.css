@@ -569,11 +569,11 @@ body::after{
   display:grid;
   gap:8px;
   height:100%;
-  /* 行高必须等分，否则隐式行高是 auto，不同行的格子会高矮不一。
-     注意要用 minmax(0, 1fr) 而不是 1fr —— 1fr 等价于 minmax(auto, 1fr)，
-     下限是内容的最小高度，内容一多行还是会被撑开，等大就破了。 */
-  grid-auto-rows:minmax(0, 1fr);
-  align-content:stretch;
+  /* 行高与列宽都由 JS 写成固定像素（见 ArenaView.gridMetrics），
+     这里不再用 1fr —— 否则格子会被拉伸铺满，参赛数量不同格子大小就不同。 */
+  justify-content:center;
+  align-content:center;
+  align-content:safe center;   /* 溢出时退回顶部对齐，避免顶部被裁掉 */
 }
 .acell{
   display:flex;
@@ -624,7 +624,9 @@ body::after{
   text-overflow:ellipsis;
 }
 
-/* ---- 起跑线遮罩：网格之上居中一个开始按钮，网格仍可见 ---- */
+/* ---- 起跑线层：只做居中定位，不加整屏遮罩 ----
+   要「看得见按钮、也看得见已初始化的柱子」，所以不靠遮罩压暗来保证可读性，
+   改成让按钮与标题自带可读性（实底 + 描边光晕）。 */
 .aready{
   position:absolute;
   inset:0;
@@ -632,14 +634,23 @@ body::after{
   display:flex;
   align-items:center;
   justify-content:center;
-  background:rgba(0,0,0,.42);
+  background:transparent;
 }
 .aready-inner{display:flex;flex-direction:column;align-items:center;gap:14px}
-.aready-title{font-size:12px;color:var(--text);letter-spacing:1px}
+.aready-title{
+  font-size:12px;
+  color:var(--text);
+  letter-spacing:1px;
+  /* 用背景色做光晕描边，压在柱状图上也能读清 —— 比加方框好看，也不挡柱子 */
+  text-shadow:0 0 5px var(--bg),0 0 5px var(--bg),0 0 5px var(--bg),0 0 2px var(--bg);
+}
 .aready-start{
   font-size:15px;
   letter-spacing:4px;
   padding:14px 52px;
+  background:var(--panel);      /* 实底：不靠遮罩也能读清 */
+  border-width:2px;
+  box-shadow:0 0 22px var(--glow-soft),0 0 2px var(--green);
 }
 .aready-hint{font-size:11px;color:var(--dim);letter-spacing:1px}
 
@@ -659,9 +670,11 @@ body::after{
   align-items:center;
   padding:22px 22px 18px;
   overflow:hidden;                 /* 一屏放完，不滚动 */
-  background:rgba(0,0,0,.5);       /* 50% 透明，能隐约看见底下的网格 */
-  -webkit-backdrop-filter:blur(3px);
-  backdrop-filter:blur(3px);
+  /* 【不叠黑纱】：柱状图直接按 alpha 画淡（见 CONFIG.arena.resultGhostAlpha），
+     这样格子底色不会一起变灰。可读性靠文字自带光晕。 */
+  background:transparent;
+  -webkit-backdrop-filter:none;
+  backdrop-filter:none;
 }
 .aresult-head{font-size:11px;color:var(--dim);letter-spacing:1px;flex-shrink:0}
 
@@ -685,6 +698,11 @@ body::after{
   animation-delay:var(--d,0s);
 }
 .apodium-row:last-child{border-bottom:none}
+/* 文字自带光晕描边：既保证压在柱状图上可读，又不需要给行加底色方框 */
+.apodium-row,.arest-row{
+  text-shadow:0 0 8px var(--bg),0 0 8px var(--bg),0 0 8px var(--bg),
+    0 0 3px var(--bg),0 1px 2px rgba(0,0,0,.9);
+}
 
 /* 其余名次：紧凑小号列表，整块出现；flex:1 吃掉剩余高度，行等分 → 不需要下拉 */
 .arest{
