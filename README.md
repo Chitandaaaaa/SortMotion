@@ -1,14 +1,17 @@
 # SortMotion
 
-终端 CLI 风格的排序算法可视化器，**单文件 HTML**，零依赖、零构建 —— 直接用浏览器打开 `sort-visualizer.html` 就能跑。
+终端 CLI 风格的排序算法可视化器，**零依赖、零构建、纯静态文件** —— 双击 `sort-visualizer.html` 就能跑，也可以直接扔到 GitHub Pages。
 
 > **在线试玩**：https://chitandaaaaa.github.io/SortMotion/sort-visualizer.html
 
-黑底荧光绿 + CRT 扫描线 + macOS 窗口标题栏，把冒泡、选择、插入、快速、堆排序的每一步（比较 / 交换 / 枢轴 / 就位）逐帧可视化，支持单步回退、执行日志、GIF 导出和完赛烟花。
+黑底荧光绿 + CRT 扫描线 + macOS 窗口标题栏，把 17 种排序算法的每一步（比较 / 交换 / 写入 / 枢轴 / 就位）逐帧可视化，支持单步回退、执行日志、GIF 导出和完赛烟花。
 
 ## 特性
 
-- **5 种排序算法**：冒泡（含提前退出优化）、选择、插入、快速（Lomuto 分区）、堆排序
+- **17 种排序算法**
+  - 比较类基础：冒泡（含提前退出优化）、选择、插入、快速（Lomuto 分区）、堆排序
+  - 比较类进阶：归并、希尔、鸡尾酒（双向冒泡）、梳、地精、二分插入、奇偶、循环、煎饼排序
+  - 非比较类：计数、基数（LSD）、桶排序
 - **逐帧可控**：播放 / 暂停 / 上一步 / 下一步，回退时会精确定态重放，不会丢状态
 - **实时统计**：比较次数、交换次数、当前步 / 总步数、耗时（秒，3 位小数）
 - **执行日志**：每一步都有中文说明，按类型着色，可一键复制
@@ -24,12 +27,14 @@ git clone https://github.com/Chitandaaaaa/SortMotion.git
 cd SortMotion
 ```
 
-直接双击 `sort-visualizer.html` 即可。若想用本地服务打开（GIF 导出在 `file://` 下也已实测可用）：
+直接双击 `sort-visualizer.html` 即可（用的是经典 `<script src>`，`file://` 下能正常加载，**不需要起服务器**）。若想用本地服务打开：
 
 ```bash
 python -m http.server 8000
 # 然后访问 http://localhost:8000/sort-visualizer.html
 ```
+
+> 为什么不用 ES Module？`<script type="module">` 在 `file://` 下会被 CORS 拦死，双击打开就白屏。经典脚本没有这个限制，代价是各文件共享全局命名空间 —— 对这个规模的项目是划算的取舍。
 
 ## 操作
 
@@ -56,51 +61,118 @@ python -m http.server 8000
 
 ## 扩展新算法
 
-继承 `AlgorithmBase`，实现 `sort(arr)`，然后在 `AlgorithmRegistry.init()` 里注册即可 —— 左侧列表、播放、统计、GIF 导出会自动适配。
+在 `js/algorithms.js` 里用 `defineSort()` 声明即可 —— 它会自动继承 `AlgorithmBase`、登记进注册表，左侧列表 / 播放 / 统计 / GIF 导出会自动适配，**不需要改 HTML、也不需要改其它任何文件**：
 
 ```js
-function ShellSort() {
-  AlgorithmBase.call(this, "shell", "ShellSort", "希尔排序");
-}
-ShellSort.prototype = Object.create(AlgorithmBase.prototype);
-ShellSort.prototype.constructor = ShellSort;
-ShellSort.prototype.sort = function (arr) {
-  // 用 this.compare(arr, i, j) / this.swap(arr, i, j)
-  //    / this.markSorted(i) / this.markPivot(i) / this.info(msg)
-  // 记录每一步，剩下的交给框架
-};
-
-// 然后在 AlgorithmRegistry.init() 中：
-AlgorithmRegistry.register(new ShellSort());
+defineSort("tim", "TimSort", "蒂姆排序",
+  "归并 + 插入的混合：先找出天然有序的小段，再按规则归并",   // 悬停提示直接用这段说明
+  {
+    sort: function (arr) {
+      // 用 this.compare(arr, i, j)     比较两个下标
+      //    / this.compareVal(arr, i, v) 与暂存在局部变量里的值比较
+      //    / this.swap(arr, i, j)        交换两个下标
+      //    / this.set(arr, i, val)       把下标 i 覆写为 val（归并/计数/基数类用）
+      //    / this.markSorted(i) / this.markPivot(i) / this.info(msg)
+    }
+  });
 ```
 
-两个必须遵守的约定：
+声明顺序即左侧列表顺序。加完跑一次 `npm run test:core` 即可确认没写错。
 
-1. **`swap()` 必须先交换数组、再记录快照**（基类已经这么做），保证高亮渲染时柱子宽度已经是交换后的值。
-2. **回退（`replayTo`）与 GIF 模拟（`simStep`）共用同一套步骤语义**。新增步骤类型时，两处都要同步处理。
+三条必须遵守的约定：
+
+1. **`swap()` / `set()` 必须先改动数组、再记录快照**（基类已经这么做），保证高亮渲染时柱子宽度已经是改动后的值。
+2. **步骤语义只有一处实现：`StepEngine.apply()`**。向前播放、PREV 回退重放、GIF 离屏模拟、`total` 统计口径全都复用它 —— 所以新增步骤类型时只需要改这一个函数，不会出现多处漏改。
+3. **算法的中文说明写在 `defineSort` 的 `desc` 参数里**，不要再另外维护提示文案映射表。
+
+## 代码结构
+
+按职责分成三层，`sort-visualizer.html` 只作为入口声明加载顺序：
+
+```
+入口
+  sort-visualizer.html        仅结构 + 资源引用（约 110 行）
+  styles.css                  全部样式（两套主题靠 CSS 变量）
+纯逻辑层（不依赖 DOM，单测直接加载这一层）
+  js/config.js                所有可调参数
+  js/step-engine.js           StepType / StepEngine（唯一步骤语义）/ AlgorithmBase
+  js/algorithms.js            17 个算法 + defineSort + AlgorithmRegistry
+  js/utils.js                 $ / lerp / 缓动 / 主题取色 / Canvas 绘制原语
+  js/fireworks.js             烟花粒子引擎
+视图层
+  js/bars-view.js             柱状图视图
+  js/log-panel.js             日志面板
+  js/stats-panel.js           统计面板
+  js/celebration.js           庆祝弹窗
+  js/gif-exporter.js          GIF 导出
+  js/visualizer.js            主控制器（只做 DOM 绑定、状态持有、模块编排）
+  js/boot.js                  启动
+```
+
+设计意图：**核心逻辑（算法 + 步骤引擎）与 DOM 完全解耦**，视图按职责拆成独立模块，`Visualizer` 退化成编排者。`test/verify-algorithms.js` 直接加载「纯逻辑层」那 5 个文件跑单测，不需要任何 DOM 环境。
+
+> 各文件共享全局命名空间（经典脚本的代价）。当前全局导出很有限：`CONFIG`、`StepType`、`StepEngine`、`AlgorithmBase`、`SORT_ALGORITHMS`、`AlgorithmRegistry`、几个绘制函数、`Fireworks` 以及 5 个视图构造函数 + `Visualizer` + `boot`。再加模块时留意不要重名。
+
+## 测试
+
+产物零依赖、零构建，测试也不参与构建：
+
+```bash
+npm i -D jsdom      # 只有页面冒烟测试需要
+npm test            # 跑全部
+npm run test:core   # 只跑核心逻辑（无需任何依赖）
+npm run test:ui     # 只跑页面冒烟测试（需要 jsdom）
+```
+
+- `test/verify-algorithms.js` —— 按依赖顺序加载「纯逻辑层」的 5 个文件，校验入口 HTML 的脚本清单顺序、17 个算法 × 12 类输入（含 n=0/1、全等、已排序、宽值域、多重复值等）的升序 / 元素多重集 / 快照长度 / `DONE` 终态，并用 `StepEngine` 回放验证视图层看到的状态。**零依赖**。
+- `test/smoke-ui.js` —— 用 jsdom 以 **`file://` 方式真实加载页面**（`styles.css` 与 12 个 `js/*.js` 都会被实际读取执行，等价于本地双击打开），断言没有资源 404、12 个全局导出到位；再点选每个算法单步走到 `DONE`，验证结果、`PREV` 回退重放一致性、`RESET`/`RANDOM`/主题切换/计数滑块，并断言全程无未捕获异常。
+
+改算法后请先跑 `npm run test:core`；动视图层或增删脚本文件请再跑 `npm run test:ui`（它会抓出路径写错、加载顺序错、全局缺失）。
 
 ## 实现要点
 
-- **单文件**：所有 CSS 在 `<style>`，所有 JS 在 `<script>`，不用 ES Module，无 React/Vue/jQuery。
+- **经典脚本，不用 ES Module**：见上文「快速开始」的说明，为了保住 `file://` 双击打开。
 - **主题用 CSS 变量驱动**，Canvas 绘制时通过 `getComputedStyle` 读取，保证主题和导出结果一致。
 - **柱子几何不存像素快照**：柱高由 flex 撑满（上限 24px），柱宽写成百分比，因此缩放/改窗口后不需要任何重算，也就不存在"尺寸过期"导致的错位。
 - **GIF 导出有内存预算**：`gif.js` 用 `copy:true` 时会缓存每帧位图，因此按「总帧数 × 4B/像素」反推安全分辨率并等比降采样，避免长序列导出把内存打爆。
 - **GIF 的 worker 脚本**通过 fetch 下载后转成同源 Blob URL 传入，绕开跨域 Worker 限制（`file://` 下实测可用）。
+- **文件名全小写**：GitHub Pages 跑在 Linux 上大小写敏感，`Styles.css` / `styles.css` 在 macOS 本地看不出问题、线上会 404。
 
 ## 文件结构
 
 ```
 SortMotion/
-├── sort-visualizer.html   # 全部内容：样式、算法、可视化器、GIF 导出
+├── sort-visualizer.html   # 入口：只放结构与资源引用（保持这个文件名和位置，在线地址就不会变）
+├── styles.css             # 全部样式
+├── js/                    # 按依赖顺序加载（顺序见 sort-visualizer.html 里的 script 清单）
+│   ├── config.js          #   纯逻辑层
+│   ├── step-engine.js
+│   ├── algorithms.js
+│   ├── utils.js
+│   ├── fireworks.js
+│   ├── bars-view.js       #   视图层
+│   ├── log-panel.js
+│   ├── stats-panel.js
+│   ├── celebration.js
+│   ├── gif-exporter.js
+│   ├── visualizer.js
+│   └── boot.js
+├── test/                  # 开发用测试，不参与运行
+│   ├── verify-algorithms.js
+│   └── smoke-ui.js
+├── package.json           # 只有测试脚本与 jsdom 开发依赖
 ├── README.md
 └── LICENSE
 ```
 
 ## 已知取舍
 
+- **不再是「一个文件就能分享」**：换来的是可维护的多文件结构。如果之后又需要单文件版本（比如发给别人离线看），可以加一个小的拼接脚本生成 `dist/sortmotion-standalone.html`，两条路不冲突。
+- 各文件通过全局命名空间通信（经典脚本的代价）。若以后要严格隔离，可以在每个文件外面套一层 IIFE 挂到单一命名空间，或改用 ES Module —— 但后者会牺牲 `file://` 双击打开。
 - GIF 结尾字幕里的「总耗时」是按时长折算的近似值，不是真实渲染耗时（离屏渲染是瞬时完成的）。
 - 视口高度低于 833px 时，底部日志面板会从 150px 起自动收缩，把高度让给展示区。
-- 1440p 及以上分辨率、且数据量为默认 20 时，受 24px 柱高上限影响，柱块只占约一半高度（上下对称留白）。需要更饱满的话可以调大或取消 `sort-visualizer.html` 中 `.vbar` 的 `max-height`。
+- 1440p 及以上分辨率、且数据量为默认 20 时，受 24px 柱高上限影响，柱块只占约一半高度（上下对称留白）。需要更饱满的话可以调大或取消 `styles.css` 中 `.vbar` 的 `max-height`。
+- GitHub Pages 是从仓库根目录发布的，所以 `test/` 与 `package.json` 也会被发布成可访问的静态文件（无害）。
 
 ## 许可证
 

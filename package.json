@@ -1,0 +1,14 @@
+{
+  "name": "sortmotion",
+  "version": "1.0.0",
+  "private": true,
+  "description": "排序算法可视化器。产物是可双击直接运行的单个 HTML，零构建、零运行时依赖；package.json 只用于跑开发测试。",
+  "scripts": {
+    "test": "npm run test:core && npm run test:ui",
+    "test:core": "node test/verify-algorithms.js",
+    "test:ui": "node test/smoke-ui.js"
+  },
+  "devDependencies": {
+    "jsdom": "^30.1.3"
+  }
+}
