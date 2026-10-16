@@ -72,15 +72,27 @@
   </div>
 </div>
 
-<div class="logpanel">
-  <div class="phead">
-    <span>EXECUTION LOG</span>
-    <span class="logtools">
-      <button class="pbtn" id="btnCopy" data-tip="复制全部日志到剪贴板">COPY</button>
-      <button class="pbtn" id="btnClear" data-tip="清空日志区">CLEAR</button>
-    </span>
+<div class="bottom">
+  <div class="logpanel">
+    <div class="phead">
+      <span>EXECUTION LOG</span>
+      <span class="logtools">
+        <button class="pbtn" id="btnCopy" data-tip="复制全部日志到剪贴板">COPY</button>
+        <button class="pbtn" id="btnClear" data-tip="清空日志区">CLEAR</button>
+      </span>
+    </div>
+    <div class="logbody" id="logBody"></div>
   </div>
-  <div class="logbody" id="logBody"></div>
+
+  <div class="codepanel" id="codePanel">
+    <div class="phead">
+      <span>CODE</span>
+      <span class="logtools">
+        <button class="pbtn" id="btnCodeToggle" data-tip="展开 / 收起代码栏（状态会记住）">HIDE</button>
+      </span>
+    </div>
+    <div class="codebody" id="codeBody"></div>
+  </div>
 </div>
 
 <div class="tooltip" id="tooltip"></div>
@@ -114,6 +126,7 @@
 <script src="js/stats-panel.js"></script>
 <script src="js/celebration.js"></script>
 <script src="js/gif-exporter.js"></script>
+<script src="js/code-panel.js"></script>
 <script src="js/visualizer.js"></script>
 <script src="js/boot.js"></script>
 </body>

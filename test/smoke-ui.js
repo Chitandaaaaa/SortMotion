@@ -2,13 +2,14 @@
 /* =======================================================================
    SortMotion 页面冒烟测试（需要 jsdom）
 
-   以 file:// 方式真实加载 sort-visualizer.html：外链的 styles.css 与 js/*.js
-   都会被实际读取并执行，等价于「本地双击打开」的场景。然后像用户一样
-   点左侧算法、单步走到结束，验证：
-     - 12 个脚本全部加载执行、没有资源 404
+   以 http://localhost/ 为基地址、用请求拦截器把外链资源映射回本地文件，
+   等价于「起一个静态服务器打开页面」：styles.css 与 js/*.js 会被真实读取执行。
+   然后像用户一样点左侧算法、单步走到结束，验证：
+     - 13 个脚本全部加载执行、没有资源 404
      - 17 个算法项都渲染出来且都有悬停说明
      - 每个算法都能从第一步走到 DONE，最终数据升序且元素不丢
      - PREV 回退后重放的结果与正向播放一致
+     - 代码栏：渲染行数正确、随步骤高亮对应行、切换算法会刷新、多方法算法分两栏、折叠开关可用
      - RESET / RANDOM / 主题切换 / 计数滑块都不抛异常
 
    运行：npm i -D jsdom && node test/smoke-ui.js
@@ -18,15 +19,16 @@
 const fs = require("fs");
 const path = require("path");
 
-let JSDOM, VirtualConsole;
+let JSDOM, VirtualConsole, requestInterceptor;
 try {
-  ({ JSDOM, VirtualConsole } = require("jsdom"));
+  ({ JSDOM, VirtualConsole, requestInterceptor } = require("jsdom"));
 } catch (e) {
   console.error("未找到 jsdom。请先安装：npm i -D jsdom");
   process.exit(2);
 }
 
-const HTML = path.join(__dirname, "..", "sort-visualizer.html");
+const ROOT = path.join(__dirname, "..");
+const HTML = path.join(ROOT, "sort-visualizer.html");
 
 let passed = 0;
 const failures = [];
@@ -60,12 +62,28 @@ function multisetEq(a, b) {
     else ignored.push(msg);
   });
 
-  // fromFile 会给出 file:// 基地址，相对路径的 styles.css / js/*.js 才能解析
-  const dom = await JSDOM.fromFile(HTML, {
+  // 用 http://localhost/ 作为基地址（贴近线上，且能启用 localStorage），
+  // 再用请求拦截器把 http://localhost/xxx 映射回本地文件 ——
+  // 等价于「起一个静态服务器打开页面」，styles.css 与 js/*.js 会被真实读取执行。
+  const dom = new JSDOM(fs.readFileSync(HTML, "utf8"), {
+    url: "http://localhost/",
     runScripts: "dangerously",
-    resources: "usable",
     pretendToBeVisual: true,
-    virtualConsole: vc
+    virtualConsole: vc,
+    resources: {
+      interceptors: [
+        requestInterceptor(async request => {
+          const m = /^http:\/\/localhost\/(.*)$/.exec(request.url);
+          if (!m) return undefined;                    // 其它请求（如 CDN）原样放行
+          const file = path.join(ROOT, decodeURIComponent(m[1].split("?")[0]));
+          if (!fs.existsSync(file)) throw new Error("404 Not Found: " + request.url);
+          const type = file.endsWith(".css") ? "text/css" : "application/javascript";
+          return new Response(fs.readFileSync(file, "utf8"), {
+            headers: { "Content-Type": type + "; charset=utf-8" }
+          });
+        })
+      ]
+    }
   });
   const win = dom.window;
   const doc = win.document;
@@ -87,20 +105,20 @@ function multisetEq(a, b) {
   // 再让出一轮宏任务，确保 load 之后排队的脚本也执行完
   await new Promise(resolve => setTimeout(resolve, 0));
 
-  check("外链资源全部加载成功（styles.css + 12 个 js）", () => {
+  check("外链资源全部加载成功（styles.css + 13 个 js）", () => {
     assert(loadErrors.length === 0, loadErrors.slice(0, 3).join(" | "));
     const links = doc.querySelectorAll('link[rel="stylesheet"]');
     assert(links.length === 1, `样式表引用应为 1 个，实际 ${links.length}`);
     const scripts = doc.querySelectorAll("script[src]");
-    assert(scripts.length === 12, `外链脚本应为 12 个，实际 ${scripts.length}`);
+    assert(scripts.length === 13, `外链脚本应为 13 个，实际 ${scripts.length}`);
   });
 
-  check("12 个脚本的全局导出都到位（说明按依赖顺序执行成功）", () => {
+  check("13 个脚本的全局导出都到位（说明按依赖顺序执行成功）", () => {
     const expected = [
       "CONFIG", "StepType", "StepEngine", "AlgorithmBase", "SORT_ALGORITHMS",
       "AlgorithmRegistry", "readThemeColors", "Fireworks",
       "BarsView", "LogPanel", "StatsPanel", "CelebrationScreen",
-      "GifExporter", "Visualizer", "boot"
+      "GifExporter", "CodePanel", "Visualizer", "boot"
     ];
     const missing = expected.filter(n => win[n] === undefined);
     assert(missing.length === 0, "缺少全局导出: " + missing.join(", "));
@@ -151,6 +169,63 @@ function multisetEq(a, b) {
     assert(V.barsView.bars.length === 12, "柱子未按新长度重建");
   });
 
+  check("代码栏渲染：行数与当前算法的展示代码一致，且带行号", () => {
+    const algo = win.AlgorithmRegistry.get(V.selectedAlgo);
+    const rows = doc.querySelectorAll("#codeBody .cln");
+    assert(rows.length === algo.code.length,
+      `代码栏 ${rows.length} 行，算法 code 有 ${algo.code.length} 行`);
+    assert(rows.length >= 4, "代码栏行数过少");
+    assert(rows[0].querySelector(".no").textContent === "1", "行号未从 1 开始");
+    assert(rows[rows.length - 1].querySelector(".no").textContent === String(rows.length),
+      "末行行号不正确");
+  });
+
+  check("代码栏折叠：收起 / 展开 + 状态持久化", () => {
+    const panel = doc.getElementById("codePanel");
+    const btn = doc.getElementById("btnCodeToggle");
+    assert(!panel.classList.contains("collapsed"), "初始应是展开状态");
+    btn.dispatchEvent(new win.Event("click", { bubbles: true }));
+    assert(panel.classList.contains("collapsed"), "点击后未收起");
+    assert(btn.textContent === "SHOW", "收起后按钮文案应为 SHOW");
+
+    let ls = null;
+    try { ls = win.localStorage; } catch (e) { ls = null; }
+    if (ls) assert(ls.getItem("sortviz.code.collapsed") === "1", "折叠状态未写入 localStorage");
+    else console.log("（jsdom 下 localStorage 不可用，跳过持久化断言 —— 页面已对其做容错）");
+
+    btn.dispatchEvent(new win.Event("click", { bubbles: true }));
+    assert(!panel.classList.contains("collapsed"), "再点未展开");
+    assert(btn.textContent === "HIDE", "展开后按钮文案应为 HIDE");
+  });
+
+  check("分栏：多方法的算法渲染成左右两栏，行号跨栏连续", () => {
+    const merge = win.AlgorithmRegistry.get("merge");
+    assert(merge.codeColumns === 2, "merge 应声明 codeColumns = 2");
+    assert(doc.querySelectorAll("#codeBody .ccol").length === 1, "默认算法应是单栏");
+
+    V.selectAlgo("merge");
+    const cols = doc.querySelectorAll("#codeBody .ccol");
+    assert(cols.length === 2, `merge 应渲染 2 栏，实际 ${cols.length}`);
+
+    const left = cols[0].querySelectorAll(".cln").length;
+    const right = cols[1].querySelectorAll(".cln").length;
+    assert(left === merge.codeSplit, `左栏应为 ${merge.codeSplit} 行，实际 ${left}`);
+    assert(right === merge.code.length - merge.codeSplit,
+      `右栏应为 ${merge.code.length - merge.codeSplit} 行，实际 ${right}`);
+
+    // 行号必须跨栏连续（左栏 1..k，右栏 k+1..n），否则 codeMap 会指错行
+    const nos = Array.prototype.slice.call(doc.querySelectorAll("#codeBody .cln .no"))
+      .map(e => Number(e.textContent));
+    assert(nos.length === merge.code.length, `总行数应为 ${merge.code.length}，实际 ${nos.length}`);
+    nos.forEach((n, i) => assert(n === i + 1, `行号不连续：第 ${i + 1} 个是 ${n}`));
+
+    // 单栏的算法不该被带成两栏
+    V.selectAlgo("bubble");
+    assert(doc.querySelectorAll("#codeBody .ccol").length === 1, "bubble 应只有 1 栏");
+    assert(doc.querySelectorAll("#codeBody .cln").length ===
+      win.AlgorithmRegistry.get("bubble").code.length, "bubble 行数不对");
+  });
+
   const algoItems = Array.prototype.slice.call(doc.querySelectorAll(".algo-item"));
   algoItems.forEach(el => {
     const name = el.getAttribute("data-algo");
@@ -158,10 +233,24 @@ function multisetEq(a, b) {
       el.dispatchEvent(new win.Event("click", { bubbles: true }));
       assert(V.selectedAlgo === name, "未切换选中的算法");
 
+      const codeLen = win.AlgorithmRegistry.get(name).code.length;
+      assert(doc.querySelectorAll("#codeBody .cln").length === codeLen,
+        `切换算法后代码栏未刷新（实际 ${doc.querySelectorAll("#codeBody .cln").length} 行，应为 ${codeLen} 行）`);
+      assert(V.codePanel.cur === 0, "切换算法后应清除上一轮的高亮");
+
       const original = V.originalData.slice();
+      let sawHighlight = false;
       let guard = 0;
-      while (V.currentStep < V.steps.length && guard < 200000) { V.stepForward(); guard++; }
+      while (V.currentStep < V.steps.length && guard < 200000) {
+        V.stepForward();
+        if (V.codePanel.cur > 0) sawHighlight = true;
+        assert(V.codePanel.cur === 0 || (V.codePanel.cur >= 1 && V.codePanel.cur <= codeLen),
+          `代码栏高亮行号越界: ${V.codePanel.cur} / ${codeLen}`);
+        guard++;
+      }
       assert(guard < 200000, "步数异常，可能死循环");
+      assert(sawHighlight, "整个过程中代码栏从未高亮任何行");
+      assert(doc.querySelectorAll("#codeBody .cln.on").length <= 1, "同时高亮了多行");
       assert(V.finished, "走完所有步骤后 finished 仍为 false");
       assert(isSorted(V.data), "最终数据未升序");
       assert(multisetEq(V.data, original), "最终数据元素与初始不一致");

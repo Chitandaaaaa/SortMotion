@@ -104,11 +104,13 @@ check("入口 HTML 引用了 styles.css", () => {
 
 check("入口 HTML 的脚本清单与纯逻辑层顺序一致", () => {
   const srcs = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
-  assert(srcs.length === 12, `脚本标签应为 12 个，实际 ${srcs.length}`);
+  assert(srcs.length === 13, `脚本标签应为 13 个，实际 ${srcs.length}`);
   CORE_FILES.forEach((f, i) => {
     assert(srcs[i] === f, `第 ${i + 1} 个脚本应为 ${f}，实际 ${srcs[i]}`);
   });
   assert(srcs[srcs.length - 1] === "js/boot.js", "最后一个脚本应是 js/boot.js");
+  assert(srcs.indexOf("js/visualizer.js") > srcs.indexOf("js/code-panel.js"),
+    "code-panel.js 必须在 visualizer.js 之前加载");
 });
 
 check("纯逻辑层可被抽取执行（约 " + Math.round(coreChars / 1024) + "KB）", () => {
@@ -146,6 +148,45 @@ check("每个算法都自带非空的中文说明（desc）", () => {
   }
 });
 
+check("每个算法都自带展示代码（code）与行号映射（codeMap）", () => {
+  for (const a of algos) {
+    assert(Array.isArray(a.code) && a.code.length >= 4,
+      `${a.name} 的 code 缺失或过短（${a.code ? a.code.length : "无"}）`);
+    a.code.forEach((line, i) => {
+      assert(typeof line === "string", `${a.name} 的 code 第 ${i + 1} 行不是字符串`);
+      assert(line.length <= 64, `${a.name} 的 code 第 ${i + 1} 行过长（${line.length} 字符），代码栏放不下`);
+    });
+    const keys = Object.keys(a.codeMap || {});
+    assert(keys.length >= 2, `${a.name} 的 codeMap 至少应映射两类操作`);
+    keys.forEach(k => {
+      const n = a.codeMap[k];
+      assert(Number.isInteger(n) && n >= 1 && n <= a.code.length,
+        `${a.name} 的 codeMap.${k} = ${n} 超出 1..${a.code.length}`);
+    });
+    // 分栏声明要合法：左栏不能为空，也不能把整段都吃掉
+    if (a.codeColumns !== undefined) {
+      assert(a.codeColumns === 1 || a.codeColumns === 2,
+        `${a.name} 的 codeColumns 只能是 1 或 2，实际 ${a.codeColumns}`);
+      if (a.codeColumns === 2) {
+        assert(Number.isInteger(a.codeSplit) && a.codeSplit >= 1 && a.codeSplit < a.code.length,
+          `${a.name} 声明了分栏但 codeSplit=${a.codeSplit} 不合法（应在 1..${a.code.length - 1}）`);
+      }
+    }
+  }
+});
+
+check("分两栏的算法左右两栏都有内容", () => {
+  const twoCol = algos.filter(a => a.codeColumns === 2);
+  for (const a of twoCol) {
+    assert(a.codeSplit >= 1, `${a.name} 左栏为空`);
+    assert(a.code.length - a.codeSplit >= 1, `${a.name} 右栏为空`);
+  }
+  console.log(twoCol.length
+    ? `分两栏的算法（${twoCol.length} 个）: ` +
+      twoCol.map(a => `${a.label} ${a.codeSplit}+${a.code.length - a.codeSplit}`).join(", ")
+    : "没有算法声明分栏");
+});
+
 // 逐个算法 × 全部用例
 for (const algo of algos) {
   check(`${algo.label}（${algo.cnLabel}）正确性`, () => {
@@ -160,6 +201,8 @@ for (const algo of algos) {
       // 用 StepEngine 回放，验证「视图层看到的状态」也是对的
       const state = { data: input.slice(), sortedSet: {}, highlight: {} };
       const n = input.length;
+      let highlighted = 0;
+      let counted = 0;
       for (const st of steps) {
         StepEngine.apply(state, st);
         if (state.data.length !== n) throw new Error(`${name}: 快照长度发生变化`);
@@ -168,6 +211,17 @@ for (const algo of algos) {
             if (idx < 0 || idx >= n) throw new Error(`${name}: 越界下标 ${idx}`);
           }
         }
+        // 代码栏高亮用的行号必须合法
+        if (st.line !== 0 && !(st.line >= 1 && st.line <= algo.code.length)) {
+          throw new Error(`${name}: 步骤行号 ${st.line} 超出 1..${algo.code.length}`);
+        }
+        if (st.line) highlighted++;
+        if (StepEngine.isCounted(st.type)) counted++;
+      }
+      // 不变量：只要产生了实际操作（比较/交换/写入），就一定有可高亮的代码行。
+      // 反过来说 n<2、或基数排序遇到全零数据这类「无需排序」的情况不算违规。
+      if (counted > 0 && highlighted === 0) {
+        throw new Error(`${name}: 有 ${counted} 步实际操作却没有任何代码行号，代码栏不会高亮`);
       }
 
       if (!isSorted(state.data)) throw new Error(`${name}: 回放结果未升序`);

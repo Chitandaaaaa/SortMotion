@@ -71,15 +71,48 @@ function AlgorithmBase(name, label, cnLabel, desc) {
   this.arr = null;
 }
 
+/* code / codeMap 由各算法以 prototype.code / prototype.codeMap 覆盖。
+   注意：不要在构造函数里写 this.code = []，那是实例自有属性，会遮蔽原型上的值。 */
+AlgorithmBase.prototype.code = [];
+AlgorithmBase.prototype.codeMap = {};
+
+/* ---------- 步骤 → 展示代码行的映射键 ----------
+   算法用 codeMap 声明「这类操作对应展示代码的第几行」，
+   record() 给每个步骤打上 line 字段，代码栏据此高亮。 */
+var STEP_CODE_KEY = {
+  COMPARE: "compare",
+  SWAP: "swap",
+  SET: "set",
+  MARK_SORTED: "markSorted",
+  PIVOT: "pivot",
+  INFO: "info",
+  DONE: "done"
+};
+
 AlgorithmBase.prototype.record = function (type, data, message, indices) {
   this.steps.push({
     type: type,
     data: data ? data.slice() : null,
     message: message,
     indices: indices || [],
+    line: this.lineFor(type),
     compareCount: this.compareCount,
     swapCount: this.swapCount
   });
+};
+
+/* 该步骤要是在展示代码里高亮第几行；0 表示不高亮。
+   SET（写入）没单独声明时回落到 swap 那一行 —— 两者都是「改动数组」。 */
+AlgorithmBase.prototype.lineFor = function (type) {
+  var map = this.codeMap;
+  if (!map) return 0;
+  var key = STEP_CODE_KEY[type];
+  if (key === "set" && !map.set) key = "swap";
+  var n = key ? map[key] : 0;
+  if (!n) return 0;
+  // 越界就退回不高亮，避免算法作者写错行号时高亮到别的行
+  if (this.code && n > this.code.length) return 0;
+  return n;
 };
 
 AlgorithmBase.prototype.compare = function (arr, i, j) {

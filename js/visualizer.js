@@ -1,7 +1,7 @@
 "use strict";
 
 /* =======================================================================
-   11. Visualizer 主控制器
+   12. Visualizer 主控制器
    只做三件事：绑定 DOM、持有运行状态、编排上面各模块。
    ======================================================================= */
 function Visualizer() {
@@ -23,6 +23,7 @@ function Visualizer() {
     time: $("celTime"),
     hint: $("celHint")
   });
+  this.codePanel = new CodePanel($("codePanel"), $("codeBody"), $("btnCodeToggle"));
 
   // ---- 需要直接操作的 DOM ----
   this.vizEl = document.querySelector(".viz");
@@ -41,6 +42,7 @@ function Visualizer() {
   this.btnRandom = $("btnRandom");
   this.btnGif = $("btnGif");
   this.btnClear = $("btnClear");
+  this.btnCodeToggle = $("btnCodeToggle");
 
   // ---- 运行状态 ----
   this.data = [];
@@ -74,6 +76,7 @@ Visualizer.prototype.init = function () {
   this.bindKeyboard();
 
   this.generateData();
+  this.codePanel.restore();     // 恢复上次的折叠状态，再渲染代码
   this.prepareSteps();
   this.updateLegend();
   this.updateBars();
@@ -232,6 +235,7 @@ Visualizer.prototype.bindControls = function () {
   this.btnGif.addEventListener("click", function () { self.exportGIF(); });
 
   this.btnClear.addEventListener("click", function () { self.log.clear(); });
+  this.btnCodeToggle.addEventListener("click", function () { self.codePanel.toggle(); });
 
   this.countSlider.addEventListener("input", function () {
     self.count = parseInt(self.countSlider.value, 10);
@@ -301,6 +305,7 @@ Visualizer.prototype.reset = function () {
   this.swaps = 0;
   this.stepCount = 0;
   this.log.clear();
+  this.codePanel.clear();
   this.celebration.hide();
   this.prepareSteps();        // 算出 total，但不启动计时
   this.updateBars();
@@ -316,6 +321,7 @@ Visualizer.prototype.randomize = function () {
 
 Visualizer.prototype.prepareSteps = function () {
   var algo = AlgorithmRegistry.get(this.selectedAlgo);
+  this.codePanel.render(algo);      // 换算法时刷新代码栏（同算法不重建 DOM）
   this.steps = algo.run(this.data.slice());
   this.currentStep = 0;
   this.sortedSet = {};
@@ -412,6 +418,7 @@ Visualizer.prototype.replayTo = function (target) {
   this.swaps = 0;
   this.stepCount = 0;
   this.log.clear();
+  this.codePanel.clear();
   this.addLogRunHeader();
 
   for (var i = 0; i < target; i++) {
@@ -434,6 +441,8 @@ Visualizer.prototype.applyStep = function (step) {
   this.data = state.data;
   this.activeHL = state.highlight;
   if (logType) this.addLog(logType, step.message, step);
+  // 高亮这一步对应的展示代码行（0 表示该步没有映射，保持原样不清屏）
+  this.codePanel.highlight(step.line);
   this.compares = step.compareCount;
   this.swaps = step.swapCount;
   this.stepCount = step.compareCount + step.swapCount;

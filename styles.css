@@ -307,18 +307,26 @@ body::after{
 .stat .k{color:var(--dim)}
 .stat .v{color:var(--green)}
 
+/* ===== 底部区：日志 + 代码并排 ===== */
+.bottom{
+  flex-shrink:0;
+  display:flex;
+  min-height:0;
+  /* log 与 code 共用这一高度。给代码栏留出约 13 行，视口变矮时自动收缩，
+     把高度让给展示区，避免柱子被压没 */
+  height:clamp(120px, 26vh, 260px);
+  border-top:1px solid var(--border);
+}
+
 /* 日志 */
 .logpanel{
-  flex-shrink:0;
-  /* 常规屏幕下就是规格要求的 150px；视口变矮（例如页面放大）时自动收缩，
-     把高度让给展示区，避免柱子被压没 */
-  height:clamp(72px, 18vh, 150px);
+  flex:1;
+  min-width:0;
   display:flex;
   flex-direction:column;
   background:var(--panel);
-  border-top:1px solid var(--border);
 }
-.logpanel .phead{border-top:none}
+.logpanel .phead,.codepanel .phead{border-top:none}
 .logtools{display:flex;gap:6px}
 .pbtn{
   background:transparent;
@@ -346,6 +354,61 @@ body::after{
 .ln.info{color:var(--cyan)}
 .ln.pivot{color:var(--cyan)}
 .ln.done{color:var(--green);font-weight:bold}
+
+/* 代码栏 */
+.codepanel{
+  /* 代码比日志更需要宽度（日志行会自动折行，代码行不会）。
+     1 : 1.9 让 1280px 视口下代码栏约 838px，分两栏时每栏也放得下最长行 */
+  flex:1.9;
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  background:var(--panel);
+  border-left:1px solid var(--border);
+}
+/* 折叠后只剩标题栏（折叠按钮就在其中，仍可点开），把宽度还给日志 */
+.codepanel.collapsed{flex:0 0 auto}
+.codepanel.collapsed .codebody{display:none}
+.codebody{
+  position:relative;   /* 让 .cln 的 offsetTop 相对本容器，滚动定位才算得准 */
+  flex:1;
+  overflow:auto;
+  padding:5px 0;
+  font-size:12px;
+  line-height:1.5;
+}
+/* 代码分栏容器：单栏时就是一个 .ccol，两栏时并排两个。
+   每栏按内容取自然宽度，整块由 .codebody 统一横向滚动 —— 窄屏下只会出现一条滚动条，
+   不会出现两栏文字互相压住。 */
+.codecols{
+  display:flex;
+  gap:24px;
+  align-items:flex-start;
+  width:max-content;
+  min-width:100%;
+}
+.ccol{flex:0 0 auto}
+.cln{
+  display:flex;
+  padding:0 10px;
+  white-space:pre;      /* 行内不折行；过长时整块横向滚动 */
+  color:var(--dim);
+}
+.cln .no{
+  flex-shrink:0;
+  width:24px;
+  margin-right:10px;
+  text-align:right;
+  color:var(--border2);
+  user-select:none;
+}
+.cln.cm{color:var(--border2)}
+.cln.on{
+  background:var(--panel2);
+  color:var(--green);
+  box-shadow:inset 2px 0 0 var(--green);
+}
+.cempty{padding:2px 12px;color:var(--dim)}
 
 /* Tooltip */
 .tooltip{
