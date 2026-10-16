@@ -226,7 +226,7 @@ body::after{
   padding:7px 10px;
 }
 .srow label{color:var(--dim);font-size:11px;width:44px;flex-shrink:0;letter-spacing:.5px}
-.srow input[type=range]{
+.srow input[type=range],.arow input[type=range]{
   flex:1;
   -webkit-appearance:none;
   appearance:none;
@@ -235,7 +235,7 @@ body::after{
   outline:none;
   cursor:pointer;
 }
-.srow input[type=range]::-webkit-slider-thumb{
+.srow input[type=range]::-webkit-slider-thumb,.arow input[type=range]::-webkit-slider-thumb{
   -webkit-appearance:none;
   appearance:none;
   width:10px;
@@ -246,7 +246,7 @@ body::after{
   cursor:pointer;
   box-shadow:0 0 6px var(--green);
 }
-.srow input[type=range]::-moz-range-thumb{
+.srow input[type=range]::-moz-range-thumb,.arow input[type=range]::-moz-range-thumb{
   width:10px;
   height:14px;
   background:var(--green);
@@ -482,3 +482,271 @@ body::after{
   transition:opacity .7s ease;
 }
 .cel-hint.in{opacity:1}
+
+/* =======================================================================
+   竞技场
+   ======================================================================= */
+.arena{
+  position:fixed;
+  inset:0;
+  /* 低于 tooltip(10001)，这样竞技场内的 data-tip 提示仍然可见 */
+  z-index:9000;
+  display:none;
+  flex-direction:column;
+  background:var(--bg);
+}
+.arena-head{
+  flex-shrink:0;
+  height:38px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:0 14px;
+  background:var(--panel);
+  border-bottom:1px solid var(--border);
+}
+.arena-status{font-size:11px;color:var(--dim);letter-spacing:1px}
+.arena-tools{display:flex;gap:6px}
+.arena-body{
+  position:relative;        /* .aready 遮罩以它为定位基准 */
+  flex:1;
+  min-height:0;
+  padding:14px;
+  overflow:auto;
+}
+.arena-body .pbtn.on{color:var(--green);border-color:var(--green)}
+.pbtn:disabled{color:var(--border2);border-color:var(--border);cursor:not-allowed;box-shadow:none}
+/* 开赛按钮：面板底部那份要显眼（顶栏也有一份，但只放顶栏太容易找不到） */
+.pbtn.primary{
+  color:var(--green);
+  border-color:var(--green);
+  font-size:12px;
+  letter-spacing:2px;
+  padding:7px 26px;
+  box-shadow:0 0 10px var(--glow-soft);
+}
+.pbtn.primary:disabled{color:var(--border2);border-color:var(--border);box-shadow:none}
+.astartrow{justify-content:center;margin-top:2px}   /* START 左右居中 */
+
+/* ---- ① 选择面板：水平居中，垂直靠上 ---- */
+.asetup{
+  max-width:1080px;
+  margin:0 auto;            /* 左右居中 */
+  display:flex;
+  flex-direction:column;    /* 默认从顶部开始排，不垂直居中 */
+  gap:13px;
+}
+.arow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.arow input[type=range]{flex:0 0 180px}
+.albl{width:74px;flex-shrink:0;font-size:11px;color:var(--dim);letter-spacing:1px}
+.apicks{display:flex;flex-wrap:wrap;gap:6px}
+.achip{
+  font-size:11px;
+  padding:3px 9px;
+  border:1px solid var(--border2);
+  color:var(--dim);
+  cursor:pointer;
+  user-select:none;
+  transition:all .12s;
+}
+.achip:hover{color:var(--text)}
+.achip.on{color:var(--green);border-color:var(--green);box-shadow:0 0 6px var(--glow-soft)}
+.aval{font-size:11px;color:var(--green);width:26px;text-align:right}
+.adata{
+  flex:1;
+  min-width:220px;
+  max-height:56px;
+  overflow:auto;
+  font-size:12px;
+  line-height:1.7;
+  color:var(--dim);
+  word-break:break-all;
+}
+.ahint{font-size:11px;color:var(--dim);line-height:1.7}
+
+/* ---- ② 竞赛网格（m×n 平铺，格数由容器尺寸反推） ---- */
+.agrid{
+  display:grid;
+  gap:8px;
+  height:100%;
+  /* 行高必须等分，否则隐式行高是 auto，不同行的格子会高矮不一。
+     注意要用 minmax(0, 1fr) 而不是 1fr —— 1fr 等价于 minmax(auto, 1fr)，
+     下限是内容的最小高度，内容一多行还是会被撑开，等大就破了。 */
+  grid-auto-rows:minmax(0, 1fr);
+  align-content:stretch;
+}
+.acell{
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  min-height:0;
+  overflow:hidden;          /* 内容不得撑高格子，否则等大就破了 */
+  padding:6px 9px 5px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  transition:border-color .15s;
+}
+.acell.done{border-color:var(--border2)}
+.acell-hd{display:flex;align-items:center;gap:7px;flex-shrink:0;margin-bottom:4px}
+.ark{
+  flex-shrink:0;
+  width:19px;
+  height:19px;
+  line-height:17px;
+  text-align:center;
+  border-radius:50%;
+  font-size:10px;
+  color:var(--dim);
+  border:1px solid var(--border2);
+}
+.ark.m1{color:#ffd700;border-color:#ffd700;box-shadow:0 0 8px rgba(255,215,0,.45)}
+.ark.m2{color:#c8c8c8;border-color:#c8c8c8}
+.ark.m3{color:#cd7f32;border-color:#cd7f32}
+.anm{
+  flex:1;
+  min-width:0;
+  font-size:12px;
+  color:var(--text);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.apg{flex-shrink:0;font-size:11px;color:var(--dim)}
+/* flex:1 的 basis 是 0，canvas 会按剩余空间定高，不会撑出它 300×150 的固有尺寸 */
+.acv{flex:1;min-height:0;width:100%;display:block}
+.acell-ft{
+  flex-shrink:0;
+  margin-top:3px;
+  font-size:11px;
+  color:var(--dim);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* ---- 起跑线遮罩：网格之上居中一个开始按钮，网格仍可见 ---- */
+.aready{
+  position:absolute;
+  inset:0;
+  z-index:2;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(0,0,0,.42);
+}
+.aready-inner{display:flex;flex-direction:column;align-items:center;gap:14px}
+.aready-title{font-size:12px;color:var(--text);letter-spacing:1px}
+.aready-start{
+  font-size:15px;
+  letter-spacing:4px;
+  padding:14px 52px;
+}
+.aready-hint{font-size:11px;color:var(--dim);letter-spacing:1px}
+
+/* ---- ③ 结算：覆盖在网格之上，背景 50% 透明 + 虚化 ----
+   排版约束：整个结算在一屏内放完，不出现下拉 ——
+   前三名固定高度、其余名次用 flex:1 等分剩余高度，行数再多也只是变薄。 */
+@keyframes arenaReveal{
+  from{opacity:0;transform:translateY(14px) scale(.97)}
+  to{opacity:1;transform:none}
+}
+.aresult{
+  position:absolute;
+  inset:0;
+  z-index:3;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:22px 22px 18px;
+  overflow:hidden;                 /* 一屏放完，不滚动 */
+  background:rgba(0,0,0,.5);       /* 50% 透明，能隐约看见底下的网格 */
+  -webkit-backdrop-filter:blur(3px);
+  backdrop-filter:blur(3px);
+}
+.aresult-head{font-size:11px;color:var(--dim);letter-spacing:1px;flex-shrink:0}
+
+/* 前三名：不用方框，改用「大号奖牌 + 细分隔线 + 称号」的榜单排版 */
+.apodium{
+  width:100%;
+  max-width:680px;
+  display:flex;
+  flex-direction:column;
+  margin:12px 0 2px;
+  flex-shrink:0;
+}
+.apodium-row{
+  display:flex;
+  align-items:center;
+  gap:18px;
+  padding:11px 4px;
+  border-bottom:1px solid var(--border);   /* 细分隔线，不是方框 */
+  opacity:0;
+  animation:arenaReveal .34s cubic-bezier(.2,.9,.3,1) forwards;
+  animation-delay:var(--d,0s);
+}
+.apodium-row:last-child{border-bottom:none}
+
+/* 其余名次：紧凑小号列表，整块出现；flex:1 吃掉剩余高度，行等分 → 不需要下拉 */
+.arest{
+  width:100%;
+  max-width:680px;
+  flex:1;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  margin-bottom:10px;
+  border-top:1px solid var(--border);
+  opacity:0;
+  animation:arenaReveal .3s ease forwards;
+  animation-delay:var(--d,0s);
+}
+.arest-row{
+  flex:1 1 0;                      /* 等分剩余高度 → 一屏放完，不用下拉 */
+  min-height:18px;                 /* 极矮窗口下的可读下限 */
+  max-height:34px;                 /* 行数少时不至于被拉很高 */
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:0 12px;
+  border-bottom:1px solid var(--border);
+  font-size:12px;
+  overflow:hidden;
+}
+.arest-row:last-child{border-bottom:none}
+.arest-row .rk{flex-shrink:0;width:26px;text-align:right;color:var(--dim)}
+.arest-row .nm{flex:0 0 auto;width:200px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arest-row .no{flex-shrink:0;font-size:10px;color:var(--dim);border:1px solid var(--border2);padding:0 4px}
+.arest-row .st{flex:1;min-width:0;text-align:right;color:var(--dim);white-space:nowrap;overflow:hidden}
+
+/* 奖牌：金属色圆环 + 柔光，第一名最亮 */
+.amedal{
+  flex-shrink:0;
+  width:58px;
+  height:58px;
+  line-height:54px;
+  text-align:center;
+  border-radius:50%;
+  font-size:25px;
+  font-weight:bold;
+  border:2px solid var(--border2);
+  color:var(--dim);
+}
+.amedal.g1{color:#ffd700;border-color:#ffd700;box-shadow:0 0 26px rgba(255,215,0,.45),inset 0 0 14px rgba(255,215,0,.18)}
+.amedal.g2{color:#d8d8d8;border-color:#d8d8d8;box-shadow:0 0 16px rgba(216,216,216,.22)}
+.amedal.g3{color:#cd7f32;border-color:#cd7f32;box-shadow:0 0 16px rgba(205,127,50,.22)}
+/* 名字块固定宽度、不拉伸 —— 否则名字与后面的称号之间会留一大片空白 */
+.anames{display:flex;flex-direction:column;flex:0 0 auto;width:200px;min-width:0}
+.anames b{font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.anames i{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.anames i{font-style:normal;font-size:11px;color:var(--dim)}
+.apodium-row .anames b{font-size:23px;letter-spacing:1px}
+/* 称号：冠军 / 亚军 / 季军 */
+.atitle{flex-shrink:0;width:56px;text-align:center;font-size:11px;letter-spacing:2px;color:var(--dim)}
+.apodium-row.rk1 .atitle{color:#ffd700}
+.apodium-row.rk2 .atitle{color:#d8d8d8}
+.apodium-row.rk3 .atitle{color:#cd7f32}
+.astat{flex:1;min-width:0;font-size:12px;color:var(--dim);text-align:right;white-space:nowrap;overflow:hidden}
+/* 动画被禁用时（系统开了「减少动态效果」）直接显示，不能因为 animation 被跳过而留在 opacity:0 */
+@media (prefers-reduced-motion: reduce){
+  .apodium-row,.arest{animation:none;opacity:1}
+}

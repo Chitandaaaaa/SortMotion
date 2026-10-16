@@ -624,6 +624,7 @@ BucketSort.prototype.sort = function (arr) {
 var AlgorithmRegistry = {
   _map: {},
   _order: [],
+  _ctors: {},
   register: function (algo) {
     if (!this._map[algo.name]) this._order.push(algo.name);
     this._map[algo.name] = algo;
@@ -633,9 +634,19 @@ var AlgorithmRegistry = {
     var self = this;
     return this._order.map(function (n) { return self._map[n]; });
   },
+  /* 造一个全新实例。注册表里那份是主视图在用的，竞技场要同时跑多个算法，
+     用独立实例免得两边状态互相牵制。 */
+  create: function (name) {
+    var C = this._ctors[name];
+    return C ? new C() : null;
+  },
   /* 实例化顺序 = defineSort 的声明顺序（左侧列表顺序即由此决定） */
   init: function () {
     var self = this;
-    SORT_ALGORITHMS.forEach(function (Algo) { self.register(new Algo()); });
+    SORT_ALGORITHMS.forEach(function (Algo) {
+      var inst = new Algo();
+      self.register(inst);
+      self._ctors[inst.name] = Algo;
+    });
   }
 };

@@ -110,21 +110,23 @@ function multisetEq(a, b) {
     const links = doc.querySelectorAll('link[rel="stylesheet"]');
     assert(links.length === 1, `样式表引用应为 1 个，实际 ${links.length}`);
     const scripts = doc.querySelectorAll("script[src]");
-    assert(scripts.length === 13, `外链脚本应为 13 个，实际 ${scripts.length}`);
+    assert(scripts.length === 15, `外链脚本应为 15 个，实际 ${scripts.length}`);
   });
 
-  check("13 个脚本的全局导出都到位（说明按依赖顺序执行成功）", () => {
+  check("15 个脚本的全局导出都到位（说明按依赖顺序执行成功）", () => {
     const expected = [
       "CONFIG", "StepType", "StepEngine", "AlgorithmBase", "SORT_ALGORITHMS",
-      "AlgorithmRegistry", "readThemeColors", "Fireworks",
+      "AlgorithmRegistry", "readThemeColors", "drawMiniBars", "Fireworks",
       "BarsView", "LogPanel", "StatsPanel", "CelebrationScreen",
-      "GifExporter", "CodePanel", "Visualizer", "boot"
+      "GifExporter", "CodePanel", "Arena", "ArenaView", "racerMetrics",
+      "Visualizer", "boot"
     ];
     const missing = expected.filter(n => win[n] === undefined);
     assert(missing.length === 0, "缺少全局导出: " + missing.join(", "));
   });
 
   const V = win.V;
+  const CONFIG_MIN_N = win.CONFIG.arena.n.min;   // 竞技场规模下限，测试用最小规模跑得快
   check("脚本执行后全局 V（Visualizer 实例）已创建", () => {
     assert(V, "window.V 未定义（脚本可能抛异常了）");
     assert(typeof V.init === "function", "V.init 不是函数");
@@ -288,6 +290,147 @@ function multisetEq(a, b) {
     assert(doc.documentElement.getAttribute("data-theme") === "gray", "未切到 gray 主题");
     btns[0].dispatchEvent(new win.Event("click", { bubbles: true }));
     assert(!doc.documentElement.getAttribute("data-theme"), "未切回 terminal 主题");
+  });
+
+  check("竞技场：打开 → 选择 → 同屏开跑 → 结算冠亚季", () => {
+    const arena = V.arena;
+    assert(arena, "V.arena 未创建");
+    doc.getElementById("btnArena").dispatchEvent(new win.Event("click", { bubbles: true }));
+    assert(doc.getElementById("arena").style.display === "flex", "竞技场弹层未展开");
+    assert(arena.open && arena.phase === "setup", "未进入选择状态");
+
+    // 默认阵容 = 全部 17 个
+    assert(arena.picked.length === 17, `默认应选全部 17 个，实际 ${arena.picked.length}`);
+    assert(doc.querySelectorAll("#arenaBody .achip").length === 17, "选择面板算法数不对");
+    assert(doc.querySelectorAll("#arenaBody .achip.on").length === 17, "默认应全选");
+
+    // 选择界面必须有开赛入口：顶栏一份 + 面板底部一份。
+    // （这条断言是补的：之前只验状态和芯片数量，漏掉了「顶栏按钮压根没渲染」的 bug）
+    const headLabels = Array.prototype.slice
+      .call(doc.querySelectorAll("#arenaTools .pbtn")).map(b => b.textContent);
+    assert(headLabels.indexOf("START") >= 0, "顶栏缺少 START 按钮，实际：" + headLabels.join("/"));
+    assert(headLabels.indexOf("CLOSE") >= 0, "顶栏缺少 CLOSE 按钮");
+    const panelStart = doc.querySelector("#arenaBody .pbtn.primary");
+    assert(panelStart && panelStart.textContent === "START", "选择面板底部缺少 START 按钮");
+
+    // 少于 2 个算法时两处 START 都应禁用
+    arena.picked = ["bubble"];
+    arena.view.refreshPicker(arena);
+    assert(panelStart.disabled, "只选 1 个时面板 START 应禁用");
+    assert(doc.querySelector("#arenaTools .pbtn").disabled, "只选 1 个时顶栏 START 应禁用");
+    assert(/至少选 2 个/.test(doc.querySelector("#arenaBody .ahint").textContent), "缺少最少算法数提示");
+
+    // 换 4 个算法的阵容（含非比较类），并把规模压到最小：
+    // 4 个正好覆盖「前三名放大 + 其余进小排行列表」两条渲染分支
+    arena.applyPreset("contrast");
+    assert(arena.picked.length === 4, "快捷阵容未生效");
+    assert(doc.querySelectorAll("#arenaBody .achip.on").length === 4, "选择面板未刷新");
+    assert(!panelStart.disabled, "4 个算法时 START 应可用");
+    arena.setN(CONFIG_MIN_N);
+    assert(arena.data.length === CONFIG_MIN_N, "数据规模未更新");
+    assert(doc.querySelectorAll("#arenaBody .achip.on").length === 4, "改规模不应影响选择");
+
+    // 点面板 START → 进入「已就绪」起跑线界面（所有算法初始化好、停在 0%）
+    panelStart.dispatchEvent(new win.Event("click", { bubbles: true }));
+    assert(arena.phase === "ready", "点击 START 后应进入起跑线界面，而不是直接开跑");
+    assert(arena.racers.length === 4, "就绪后应已建好参赛者");
+    assert(doc.querySelectorAll("#arenaBody .acell").length === 4, "就绪界面应显示全部格子");
+    assert(arena.racers.every(r => r.cursor === 0 && !r.done), "就绪状态下不该有算法开跑");
+
+    const readyBox = doc.querySelector("#arenaBody .aready");
+    assert(readyBox, "起跑线界面缺少居中遮罩");
+    const centerBtn = doc.getElementById("arenaStartBtn");
+    assert(centerBtn && centerBtn.textContent === "START", "起跑线缺少中间的开始按钮");
+    assert(doc.querySelectorAll("#arenaTools .pbtn")[0].textContent === "START", "就绪状态顶栏应也是 START");
+    assert(!doc.querySelector("#arenaBody .aready-hint"), "起跑线不该再有提示文案");
+    assert(!/同一条起跑线/.test(doc.body.textContent), "「同一条起跑线」文案应已删除");
+
+    // 点遮罩空白处不应开跑（只有 START 才生效）
+    readyBox.dispatchEvent(new win.Event("click", { bubbles: true }));
+    assert(arena.phase === "ready", "点遮罩空白处不该开跑，只有 START 才生效");
+
+    // 点中间的开始按钮，才真正开跑
+    centerBtn.dispatchEvent(new win.Event("click", { bubbles: true }));
+    assert(arena.phase === "racing", "点击中间 START 未开赛");
+    assert(!doc.querySelector("#arenaBody .aready"), "开跑后起跑线遮罩应移除");
+    assert(arena.racers.length === 4, "参赛者数量不对");
+    assert(doc.querySelectorAll("#arenaBody .acell").length === 4,
+      `网格单元格应为 4 个，实际 ${doc.querySelectorAll("#arenaBody .acell").length}`);
+    assert(arena.racers.every(r => r.state.data.length === CONFIG_MIN_N), "泳道初始数据长度不对");
+    // 全体必须共用同一份输入，否则比较没有意义
+    arena.racers.forEach(r => assert(multisetEq(r.state.data, arena.data), "泳道输入与共享输入不一致"));
+
+    // 手动推进，避免等 15 秒的真实动画
+    arena.stopLoop();
+    let guard = 0;
+    while (arena.phase === "racing" && guard < 20000) { arena.tick(); guard++; }
+    assert(guard < 20000, "帧数异常，可能死循环");
+    assert(arena.phase === "result", "比赛未进入结算状态");
+
+    arena.racers.forEach(rc => {
+      assert(isSorted(rc.state.data), `${rc.name} 的最终结果未升序`);
+      assert(multisetEq(rc.state.data, arena.data), `${rc.name} 的元素与共享输入不一致`);
+      assert(rc.done && rc.rank >= 1, `${rc.name} 未标记完赛 / 名次`);
+    });
+
+    const ranks = arena.result.order.map(r => r.rank);
+    for (let i = 1; i < ranks.length; i++) {
+      assert(ranks[i] >= ranks[i - 1], "名次应单调不减（同帧完赛视为并列）");
+    }
+    assert(ranks[0] === 1, "第一名必须存在");
+
+    // 结算：全屏排行榜，展示全部参赛者
+    const wrap = doc.querySelector("#arenaBody .aresult");
+    assert(wrap, "结算缺少 .aresult 容器");
+    assert(!doc.querySelector("#arenaBody .aresult-head"), "结算标题行应已删除");
+    assert(!/按完赛用时排名/.test(doc.body.textContent), "「按完赛用时排名」文案应已删除");
+    assert(doc.querySelector("#arenaBody .apodium"), "结算缺少前三名区域");
+    assert(!doc.querySelector("#arenaBody .anote"), "结算说明文字应已删除");
+    assert(!/所有算法的排序结果都相同/.test(doc.body.textContent), "结算说明文案应已删除");
+
+    // 前三名：大号卡片，各带一个递进的 --d 延迟（逐个亮相）；用 CSS 动画延迟实现，
+    // 所以 DOM 是一次建全的，测试不需要等定时器
+    const podium = Array.prototype.slice.call(doc.querySelectorAll("#arenaBody .apodium-row"));
+    assert(podium.length === 3, `前三名应有 3 行，实际 ${podium.length}`);
+    assert(doc.querySelectorAll("#arenaBody .amedal").length === 3, "奖牌数量不对");
+    assert(doc.querySelectorAll("#arenaBody .amedal.g1").length >= 1, "缺少冠军奖牌");
+    const delays = podium.map(r => r.style.getPropertyValue("--d"));
+    assert(new Set(delays).size === 3, `前三名的出现延迟应各不相同，实际 ${delays.join("/")}`);
+    assert(delays[0] === "0ms", `第一名应立即出现，实际 ${delays[0]}`);
+    podium.forEach((r, i) => {
+      assert(r.querySelector(".anames b").textContent.length > 0, "前三名行缺少算法名");
+      assert(r.querySelector(".astat").textContent.indexOf("s") > 0, "前三名行缺少用时");
+      const title = r.querySelector(".atitle");
+      assert(title, "前三名行缺少称号");
+      assert(["冠军", "亚军", "季军"].indexOf(title.textContent) >= 0,
+        "称号不对: " + title.textContent);
+      // 称号必须与奖牌上的名次一致
+      const medalNo = Number(r.querySelector(".amedal").textContent);
+      assert(title.textContent === ["冠军", "亚军", "季军"][medalNo - 1],
+        `称号与名次不一致：名次 ${medalNo} 却写了 ${title.textContent}`);
+      void i;
+    });
+
+    // 其余名次：小号紧凑列表，整块一次出现
+    const restRows = doc.querySelectorAll("#arenaBody .arest-row");
+    assert(restRows.length === arena.racers.length - 3,
+      `小排行列表应有 ${arena.racers.length - 3} 行，实际 ${restRows.length}`);
+    const restBox = doc.querySelector("#arenaBody .arest");
+    assert(restBox.style.getPropertyValue("--d") !== "", "小排行列表缺少出现延迟");
+    // 名次从上到下递减增大
+    const nums = Array.prototype.slice.call(doc.querySelectorAll("#arenaBody .arest-row .rk"))
+      .map(e => Number(e.textContent));
+    for (let i = 1; i < nums.length; i++) {
+      assert(nums[i] >= nums[i - 1], "小排行列表的名次顺序不对");
+    }
+
+    // 全部参赛者都出现了
+    assert(podium.length + restRows.length === arena.racers.length,
+      "结算没有展示全部参赛算法");
+
+    arena.exit();
+    assert(!arena.open, "关闭后 open 仍为 true");
+    assert(doc.getElementById("arena").style.display === "none", "竞技场弹层未隐藏");
   });
 
   check("全程没有未捕获异常 / console.error", () => {

@@ -75,6 +75,32 @@ function drawBarsOnCanvas(ctx, data, sortedSet, hl, area, colors, alpha) {
   ctx.restore();
 }
 
+/* 竖向迷你柱状图（竞技场网格单元格专用）。
+   单元格又宽又矮，横向柱状图的「行高 + 行间 gap」启发式在这里会把柱高压到 1px，
+   所以竞技场改用竖柱：柱宽由单元格宽度除以元素数得到，高度按值取。 */
+function drawMiniBars(ctx, data, sortedSet, hl, area, colors) {
+  var n = data.length;
+  if (!n) return;
+  var max = 1, i;
+  for (i = 0; i < n; i++) if (data[i] > max) max = data[i];
+  var gap = n > 40 ? 1 : 2;
+  var bw = Math.floor((area.w - (n - 1) * gap) / n);
+  if (bw < 1) { bw = 1; gap = 0; }
+  ctx.save();
+  for (i = 0; i < n; i++) {
+    var h = Math.max(1, Math.round((data[i] / max) * area.h));
+    var c = colors.idle;
+    var tag = hl[i];
+    if (tag === "compare") c = colors.cmp;
+    else if (tag === "swap") c = colors.swap;
+    else if (tag === "pivot") c = colors.pivot;
+    else if (sortedSet[i]) c = colors.sorted;
+    ctx.fillStyle = c;
+    ctx.fillRect(area.x + i * (bw + gap), area.y + area.h - h, bw, h);
+  }
+  ctx.restore();
+}
+
 /* 画布上的逐字动画文字 */
 function drawAnimatedText(ctx, text, cx, cy, size, color, progress, glow) {
   var chars = Array.from(text);

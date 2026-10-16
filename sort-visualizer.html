@@ -61,6 +61,7 @@
       <button class="btn" id="btnReset" data-tip="恢复初始数组并清空所有进度，数据本身不变（快捷键：R）">RESET</button>
       <button class="btn" id="btnRandom" data-tip="重新生成一组随机数据并清空进度">RANDOM</button>
       <button class="btn wide" id="btnGif" data-tip="把展示区动画导出为 GIF。离屏渲染，不影响页面当前状态">EXPORT GIF</button>
+      <button class="btn wide" id="btnArena" data-tip="排序算法竞技场：多个算法在网格里同屏开跑，比谁先排完">ARENA</button>
     </div>
 
     <div class="phead"><span>STATS</span></div>
@@ -95,6 +96,17 @@
   </div>
 </div>
 
+<div class="arena" id="arena">
+  <div class="arena-head">
+    <span class="brand">ARENA</span>
+    <span class="sep">│</span>
+    <span class="arena-status" id="arenaStatus"></span>
+    <span class="spacer"></span>
+    <span class="arena-tools" id="arenaTools"></span>
+  </div>
+  <div class="arena-body" id="arenaBody"></div>
+</div>
+
 <div class="tooltip" id="tooltip"></div>
 
 <div class="celebrate" id="celebrate">
@@ -111,7 +123,7 @@
   脚本加载顺序即为依赖顺序，不要随意调整：
     config → step-engine → algorithms → utils → fireworks
       = 纯逻辑层（不依赖 DOM，test/verify-algorithms.js 直接抽取这一层跑单测）
-    再往上依次是视图模块，最后 visualizer（编排）与 boot（启动）。
+    再往上依次是视图模块（含竞技场的 arena / arena-view），最后 visualizer（编排）与 boot（启动）。
 
   这里刻意使用经典 <script src> 而不是 ES Module：经典脚本在 file:// 下
   可以直接双击打开，而 type="module" 会被 CORS 拦截，必须起本地服务器。
@@ -127,6 +139,8 @@
 <script src="js/celebration.js"></script>
 <script src="js/gif-exporter.js"></script>
 <script src="js/code-panel.js"></script>
+<script src="js/arena.js"></script>
+<script src="js/arena-view.js"></script>
 <script src="js/visualizer.js"></script>
 <script src="js/boot.js"></script>
 </body>

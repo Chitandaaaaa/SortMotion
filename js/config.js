@@ -40,6 +40,20 @@ var CONFIG = {
     maxHeight: 600,
     workers: 2,
     quality: 10
+  },
+
+  /* 排序算法竞技场 */
+  arena: {
+    // 竞技场要同时预计算参赛算法的步骤序列（每步带一份数组快照）。
+    // 实测全选 17 个算法时的堆增长：n=20 约 1.5MB、n=60 约 11.7MB、n=100 约 27.7MB，
+    // 与主视图一致放到 100 是安全的。
+    n: { def: 20, min: 10, max: 100 },
+    targetMs: 15000,        // 比赛目标时长；步速 = 最慢算法总步数 / 目标帧数
+    maxStepsPerFrame: 40,   // 单帧最多推进多少步，避免大 n 时跳帧太猛
+    cellMinWidth: 230,      // 网格单元格下限，用来反推合适的列数
+    cellMinHeight: 132,
+    maxCols: 8,
+    resultStepMs: 420       // 结算时前三名逐个亮相的间隔
   }
 };
 

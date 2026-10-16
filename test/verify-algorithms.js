@@ -104,13 +104,17 @@ check("入口 HTML 引用了 styles.css", () => {
 
 check("入口 HTML 的脚本清单与纯逻辑层顺序一致", () => {
   const srcs = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
-  assert(srcs.length === 13, `脚本标签应为 13 个，实际 ${srcs.length}`);
+  assert(srcs.length === 15, `脚本标签应为 15 个，实际 ${srcs.length}`);
   CORE_FILES.forEach((f, i) => {
     assert(srcs[i] === f, `第 ${i + 1} 个脚本应为 ${f}，实际 ${srcs[i]}`);
   });
   assert(srcs[srcs.length - 1] === "js/boot.js", "最后一个脚本应是 js/boot.js");
   assert(srcs.indexOf("js/visualizer.js") > srcs.indexOf("js/code-panel.js"),
     "code-panel.js 必须在 visualizer.js 之前加载");
+  assert(srcs.indexOf("js/visualizer.js") > srcs.indexOf("js/arena.js"),
+    "arena.js 必须在 visualizer.js 之前加载");
+  assert(srcs.indexOf("js/arena-view.js") > srcs.indexOf("js/arena.js"),
+    "arena-view.js 应在 arena.js 之后加载");
 });
 
 check("纯逻辑层可被抽取执行（约 " + Math.round(coreChars / 1024) + "KB）", () => {
@@ -146,6 +150,35 @@ check("每个算法都自带非空的中文说明（desc）", () => {
     assert(a.desc && a.desc.length >= 8, `${a.name} 缺少 desc`);
     assert(a.cnLabel && a.label, `${a.name} 缺少 label/cnLabel`);
   }
+});
+
+check("AlgorithmRegistry.create 返回独立实例（竞技场用）", () => {
+  assert(typeof AlgorithmRegistry.create === "function", "缺少 create 工厂");
+  const a = AlgorithmRegistry.create("quick");
+  const b = AlgorithmRegistry.create("quick");
+  assert(a && b, "create 返回空");
+  assert(a.name === "quick" && b.name === "quick", "create 返回的算法不对");
+  assert(a !== b, "create 应每次返回新实例");
+  assert(a !== AlgorithmRegistry.get("quick"), "create 不应复用注册表里的实例");
+  // 计数互不影响，是竞技场名次可信的前提
+  a.run([5, 3, 1, 4, 2]);
+  const aCmp = a.compareCount;
+  assert(AlgorithmRegistry.get("quick").compareCount === 0, "不应污染注册表实例的计数");
+  b.run([5, 3, 1, 4, 2]);
+  assert(b.compareCount === aCmp, "两个独立实例跑同样输入应得到相同计数");
+  assert(AlgorithmRegistry.create("不存在的算法") === null, "未知名字应返回 null");
+});
+
+check("CONFIG.arena 定义了竞技场参数（规模上限与主视图一致）", () => {
+  assert(CONFIG.arena && typeof CONFIG.arena === "object", "缺少 CONFIG.arena");
+  const a = CONFIG.arena.n;
+  assert(a && a.min >= 2 && a.max > a.min, "arena.n 区间不合法");
+  // 与主视图一致放到 100：实测全选 17 个算法 n=100 时堆增长约 27.7MB，可接受
+  assert(a.max === CONFIG.count.max,
+    `竞技场与主视图的规模上限应一致，实际 ${a.max} vs ${CONFIG.count.max}`);
+  assert(a.max === 100, "数据规模上限应为 100");
+  assert(CONFIG.arena.targetMs > 0, "缺少比赛目标时长");
+  assert(CONFIG.arena.cellMinWidth > 0 && CONFIG.arena.cellMinHeight > 0, "缺少单元格下限");
 });
 
 check("每个算法都自带展示代码（code）与行号映射（codeMap）", () => {
@@ -243,6 +276,113 @@ check("StepEngine.isCounted 口径与统计一致（比较/交换/写入计入 t
   assert(StepEngine.isCounted(StepType.SET), "SET 应计入");
   assert(!StepEngine.isCounted(StepType.INFO), "INFO 不应计入");
   assert(!StepEngine.isCounted(StepType.MARK_SORTED), "MARK_SORTED 不应计入");
+});
+
+check("竞技场网格：列等宽 + 行等高，保证每个格子一样大", () => {
+  const css = fs.readFileSync(path.join(ROOT, "styles.css"), "utf8");
+  const grid = css.match(/\.agrid\{[\s\S]*?\n\}/);
+  const cell = css.match(/\n\.acell\{[\s\S]*?\n\}/);
+  assert(grid, "找不到 .agrid 规则");
+  assert(cell, "找不到 .acell 规则");
+
+  // 列宽由 JS 写 repeat(cols, minmax(0,1fr)) 保证等宽；行高必须在 CSS 里等分，
+  // 否则隐式行高是 auto，不同行的格子会高矮不一 —— 这是「格子必须一样大」的关键。
+  // 必须是 minmax(0,1fr) 而非 1fr：1fr 的下限是内容最小高度，内容多了照样撑开。
+  assert(/grid-auto-rows\s*:\s*minmax\(0,\s*1fr\)/.test(grid[0]),
+    ".agrid 必须声明 grid-auto-rows:minmax(0,1fr)，否则各行高矮不一");
+  assert(/align-content\s*:\s*stretch/.test(grid[0]),
+    ".agrid 需要 align-content:stretch，让各行铺满容器高度");
+  assert(/overflow\s*:\s*hidden/.test(cell[0]),
+    ".acell 需要 overflow:hidden，避免内容把格子撑高");
+  // 柱状图用 flex:1 + min-height:0，既不撑高也不塌陷
+  assert(/\.acv\{[^}]*flex\s*:\s*1/.test(css) && /\.acv\{[^}]*min-height\s*:\s*0/.test(css),
+    ".acv 需要 flex:1 与 min-height:0");
+});
+
+check("竞技场结算：背景虚化 + 前三名逐个亮相 + 其余整块出现", () => {
+  const css = fs.readFileSync(path.join(ROOT, "styles.css"), "utf8");
+  const res = css.match(/\n\.aresult\{[\s\S]*?\n\}/);
+  const pod = css.match(/\n\.apodium-row\{[\s\S]*?\n\}/);
+  const rest = css.match(/\n\.arest\{[\s\S]*?\n\}/);
+  assert(res, "找不到 .aresult 规则");
+  assert(pod, "找不到 .apodium-row 规则");
+  assert(rest, "找不到 .arest 规则");
+
+  // 覆盖在网格之上并做背景虚化
+  assert(/position\s*:\s*absolute/.test(res[0]), ".aresult 应绝对定位覆盖在网格之上");
+  assert(/backdrop-filter\s*:\s*blur/.test(res[0]), ".aresult 需要 backdrop-filter 实现背景虚化");
+  // 前三名与其余名次都靠 --d 控制出现时机（DOM 一次建全，延迟只是视觉效果）
+  assert(/animation-delay\s*:\s*var\(--d/.test(pod[0]), ".apodium-row 需用 --d 逐个亮相");
+  assert(/animation-delay\s*:\s*var\(--d/.test(rest[0]), ".arest 需用 --d 控制整块出现的时机");
+  // 背景 50% 透明
+  assert(/background\s*:\s*rgba\(0,\s*0,\s*0,\s*\.5\)/.test(res[0]),
+    ".aresult 背景应为 rgba(0,0,0,.5)（50% 透明）");
+  // 一屏放完：容器不滚动 + 其余名次行等分剩余高度
+  assert(/overflow\s*:\s*hidden/.test(res[0]), ".aresult 需要 overflow:hidden，保证一屏放完不出现下拉");
+  assert(/flex\s*:\s*1/.test(rest[0]), ".arest 需要 flex:1 吃掉剩余高度");
+  const row = css.match(/\n\.arest-row\{[\s\S]*?\n\}/);
+  assert(row, "找不到 .arest-row 规则");
+  assert(/flex\s*:\s*1\s+1\s+0/.test(row[0]), ".arest-row 需要 flex:1 1 0 等分剩余高度");
+  // 前三名不用方框：只允许有底部分隔线，不允许整圈边框/底色块
+  assert(!/border\s*:\s*1px/.test(pod[0]), ".apodium-row 不该有整圈边框（用户要求不要方框）");
+  assert(!/background\s*:\s*var\(--panel\)/.test(pod[0]), ".apodium-row 不该有整块底色（用户要求不要方框）");
+  assert(/border-bottom/.test(pod[0]), ".apodium-row 用细分隔线代替方框");
+  // 称号
+  assert(/\.atitle\{/.test(css), "缺少前三名的称号样式 .atitle");
+  // 右半边文字右对齐（以容器横线的右端为准）
+  const astat = css.match(/\n\.astat\{[^}]*\}/);
+  assert(astat && /text-align\s*:\s*right/.test(astat[0]), ".astat 应右对齐");
+  const rst = css.match(/\.arest-row \.st\{[^}]*\}/);
+  assert(rst && /text-align\s*:\s*right/.test(rst[0]), ".arest-row .st 应右对齐");
+  // 背景 50% 透明 + 轻虚化，要能隐约看见底下的网格
+  const blur = res[0].match(/backdrop-filter\s*:\s*blur\((\d+)px\)/);
+  assert(blur, ".aresult 缺少 backdrop-filter");
+  assert(Number(blur[1]) <= 4, `虚化过强（${blur[1]}px），会看不清底下的网格`);
+
+  // 配置面板：水平居中，但靠上（不垂直居中）
+  const setup = css.match(/\n\.asetup\{[\s\S]*?\n\}/);
+  assert(setup, "找不到 .asetup 规则");
+  assert(/margin\s*:\s*0\s+auto/.test(setup[0]), ".asetup 需要水平居中");
+  assert(!/justify-content\s*:\s*center/.test(setup[0]), ".asetup 不该垂直居中（要求靠上）");
+  // 开赛按钮左右居中
+  const srow = css.match(/\n\.astartrow\{[^}]*\}/);
+  assert(srow && /justify-content\s*:\s*center/.test(srow[0]), ".astartrow 需要 justify-content:center");
+
+  // 动画被禁用时不能把内容留在 opacity:0
+  assert(/prefers-reduced-motion/.test(css), "需要 prefers-reduced-motion 兜底，避免动画禁用后内容不可见");
+});
+
+check("drawMiniBars 画竖柱：底部对齐、高度按值、颜色跟随状态（竞技场网格用）", () => {
+  const { drawMiniBars } = sandbox;
+  assert(typeof drawMiniBars === "function", "drawMiniBars 未导出");
+
+  const rects = [];
+  const ctx = {
+    fillStyle: "",
+    save: function () {},
+    restore: function () {},
+    fillRect: function (x, y, w, h) {
+      rects.push({ x: x, y: y, w: w, h: h, fill: ctx.fillStyle });
+    }
+  };
+  const colors = { idle: "C0", cmp: "C1", swap: "C2", pivot: "C3", sorted: "C4" };
+  const area = { x: 0, y: 0, w: 100, h: 50 };
+
+  drawMiniBars(ctx, [10, 20, 30, 40], { 2: true }, { 1: "compare", 3: "swap" }, area, colors);
+
+  assert(rects.length === 4, `应画 4 根柱子，实际 ${rects.length}`);
+  assert(rects[3].h === 50, "最大值应占满高度");
+  for (let i = 1; i < 4; i++) {
+    assert(rects[i].h >= rects[i - 1].h, "柱高应随值单调不减");
+    assert(rects[i].y + rects[i].h === 50, "柱子应底部对齐");
+  }
+  assert(rects[0].fill === "C0", "空闲柱应用 idle 色");
+  assert(rects[1].fill === "C1", "比较中的柱应用比较色");
+  assert(rects[2].fill === "C4", "已排序的柱应用已排序色");
+  assert(rects[3].fill === "C2", "交换中的柱应用交换色");
+
+  // 空数组不应抛异常
+  drawMiniBars(ctx, [], {}, {}, area, colors);
 });
 
 /* ---------- 5. 汇总 ---------- */

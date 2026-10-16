@@ -1,7 +1,7 @@
 "use strict";
 
 /* =======================================================================
-   12. Visualizer 主控制器
+   14. Visualizer 主控制器
    只做三件事：绑定 DOM、持有运行状态、编排上面各模块。
    ======================================================================= */
 function Visualizer() {
@@ -25,6 +25,19 @@ function Visualizer() {
   });
   this.codePanel = new CodePanel($("codePanel"), $("codeBody"), $("btnCodeToggle"));
 
+  // ---- 竞技场（独立全屏弹层，不占用主视图状态）----
+  this.arena = new Arena(new ArenaView({
+    root: $("arena"),
+    status: $("arenaStatus"),
+    tools: $("arenaTools"),
+    body: $("arenaBody")
+  }));
+  // 钩子挂在构造之后：Arena 只在 enter/exit 时读 hooks，所以来得及
+  var self0 = this;
+  this.arena.hooks = {
+    onEnter: function () { self0.pause(true); }   // 进竞技场先停掉主视图播放，免得两处同时动
+  };
+
   // ---- 需要直接操作的 DOM ----
   this.vizEl = document.querySelector(".viz");
   this.tooltip = $("tooltip");
@@ -43,6 +56,7 @@ function Visualizer() {
   this.btnGif = $("btnGif");
   this.btnClear = $("btnClear");
   this.btnCodeToggle = $("btnCodeToggle");
+  this.btnArena = $("btnArena");
 
   // ---- 运行状态 ----
   this.data = [];
@@ -236,6 +250,7 @@ Visualizer.prototype.bindControls = function () {
 
   this.btnClear.addEventListener("click", function () { self.log.clear(); });
   this.btnCodeToggle.addEventListener("click", function () { self.codePanel.toggle(); });
+  this.btnArena.addEventListener("click", function () { self.arena.enter(); });
 
   this.countSlider.addEventListener("input", function () {
     self.count = parseInt(self.countSlider.value, 10);
@@ -257,6 +272,13 @@ Visualizer.prototype.bindKeyboard = function () {
   var self = this;
   document.addEventListener("keydown", function (e) {
     if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+
+    // 竞技场开着时接管键盘：Esc 关闭，其余主视图快捷键一律屏蔽
+    if (self.arena.open) {
+      if (e.key === "Escape") { e.preventDefault(); self.arena.exit(); }
+      return;
+    }
+
     var k = e.key;
     if (k === " " || k === "Spacebar") {
       e.preventDefault();
