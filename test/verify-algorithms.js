@@ -192,15 +192,21 @@ check("CONFIG.arena 定义了竞技场参数（规模上限与主视图一致）
     `speed 最大时应等于 stepMs.min(${CONFIG.stepMs.min})，实际 ${stepDelayMs(CONFIG.speed.max)}`);
   assert(stepDelayMs(CONFIG.speed.min) === CONFIG.stepMs.max,
     `speed 最小时应等于 stepMs.max(${CONFIG.stepMs.max})，实际 ${stepDelayMs(CONFIG.speed.min)}`);
-  // 满格 100 = 50 步/秒（20ms/步），即旧版 50 的节奏
-  assert(stepDelayMs(100) === 20, `speed=100 时每步应为 20ms，实际 ${stepDelayMs(100)}`);
-  assert(stepDelayMs(50) === 40, `speed=50 时每步应为 40ms，实际 ${stepDelayMs(50)}`);
-  for (const s of [2, 5, 10, 25, 40, 80, 90]) {
-    assert(stepDelayMs(s) === 2000 / s, `speed=${s} 时每步延时应为 ${2000 / s}ms（线性速度）`);
+  // 两端固定：1 → 1000ms/步，100 → 100ms/步；中间对【每步耗时】线性插值
+  assert(stepDelayMs(1) === 1000, `speed=1 时每步应为 1000ms，实际 ${stepDelayMs(1)}`);
+  assert(stepDelayMs(100) === 100, `speed=100 时每步应为 100ms，实际 ${stepDelayMs(100)}`);
+  assert(Math.abs(stepDelayMs(50.5) - 550) < 1e-9,
+    `中点 speed=50.5 应为 550ms，实际 ${stepDelayMs(50.5)}`);
+  // 线性：每格耗时增量恒定（900/99 ms）
+  const stepMsPerUnit = (1000 - 100) / 99;
+  for (const s of [1, 20, 37, 50, 78, 99]) {
+    const diff = stepDelayMs(s) - stepDelayMs(s + 1);
+    assert(Math.abs(diff - stepMsPerUnit) < 1e-9,
+      `speed=${s}→${s + 1} 的耗时增量应为 ${stepMsPerUnit.toFixed(4)}ms，实际 ${diff}`);
   }
-  // 速度翻倍 → 每秒步数也翻倍
-  assert(Math.abs(2000 / stepDelayMs(40) - 2 * (2000 / stepDelayMs(20))) < 1e-9,
-    "40 的速度应为 20 的两倍（线性）");
+  // 线性性：跨度相同则耗时差相同（1→50.5 与 50.5→100 相等）
+  assert(Math.abs((stepDelayMs(1) - stepDelayMs(50.5)) - (stepDelayMs(50.5) - stepDelayMs(100))) < 1e-9,
+    "两端到中点的时间差应相等（线性插值）");
   assert(CONFIG.arena.cellWidth > 0 && CONFIG.arena.cellHeight > 0, "缺少单元格尺寸");
   assert(CONFIG.arena.cellMinHeight > 0 && CONFIG.arena.gridGap >= 0, "缺少单元格下限/间距");
 });

@@ -6,15 +6,19 @@
 function $(id) { return document.getElementById(id); }
 
 /* 速度值(1..100) → 单步延时(ms)。主视图、竞技场、GIF 导出共用这一个公式。
-   契约：线性，满格 100 = 50 步/秒（也就是旧版 50 的节奏）。
-     1 → 0.5 步/秒(2000ms/步)   50 → 25 步/秒(40ms/步)   100 → 50 步/秒(20ms/步)
-   注意不要写成「延时随 speed 线性递减」——那样速度是 1/延时的双曲线，
-   前 90 格几乎没变化、最后 10 格暴涨，滑块手感极不均匀。 */
+   规格：两端固定、中间对【每步耗时】线性插值。
+     speed 1   → 1000ms/步（最慢，1 秒一步）
+     speed 100 → 100ms/步（最快，0.1 秒一步）
+     delay = 1000 - (speed - 1) × (1000 - 100) / 99
+   注意：线性的是「耗时」，不是「每秒步数」——后者是 1/delay，
+   所以步/秒 在慢端变化平缓、快端更陡，这是这个规格的必然结果。 */
 function stepDelayMs(speed) {
-  if (!(speed > 0)) speed = 1;
-  var ms = 2000 / speed;
-  var lo = CONFIG.stepMs.min, hi = CONFIG.stepMs.max;
-  return ms < lo ? lo : (ms > hi ? hi : ms);
+  var lo = CONFIG.stepMs.min, hi = CONFIG.stepMs.max;   // lo=最快(100ms)，hi=最慢(1000ms)
+  var s = CONFIG.speed;
+  var k = (speed - s.min) / (s.max - s.min);
+  if (!(k >= 0)) k = 0;
+  if (k > 1) k = 1;
+  return hi - (hi - lo) * k;
 }
 
 function lerp(a, b, t) { return a + (b - a) * t; }

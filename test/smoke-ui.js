@@ -381,9 +381,14 @@ function multisetEq(a, b) {
 
     // 手动推进，避免等 15 秒的真实动画
     arena.stopLoop();
-    let guard = 0;
-    while (arena.phase === "racing" && guard < 20000) { arena.tick(); guard++; }
-    assert(guard < 20000, "帧数异常，可能死循环");
+    // 手动推进：给 tick 传递增时间戳（每帧 +20ms），不依赖真实时钟
+    let guard = 0, manualNow = 0;
+    while (arena.phase === "racing" && guard < 50000) {
+      manualNow += 20;
+      arena.tick(manualNow);
+      guard++;
+    }
+    assert(guard < 50000, "帧数异常，可能死循环");
     assert(arena.phase === "result", "比赛未进入结算状态");
 
     arena.racers.forEach(rc => {
@@ -522,8 +527,8 @@ function multisetEq(a, b) {
     // 跑到结算
     arena.start();
     arena.stopLoop();
-    let g = 0;
-    while (arena.phase === "racing" && g < 20000) { arena.tick(); g++; }
+    let g = 0, gNow = 0;
+    while (arena.phase === "racing" && g < 50000) { gNow += 20; arena.tick(gNow); g++; }
     assert(arena.phase === "result", "未进入结算");
 
     st.alphas.length = 0;
@@ -584,9 +589,14 @@ function multisetEq(a, b) {
     arena.setSpeed(win.CONFIG.speed.min);
     assert(arena.stepDelay() === win.CONFIG.stepMs.max,
       `speed=1 时应等于 stepMs.max(${win.CONFIG.stepMs.max})`);
-    // 满格 100 = 50 步/秒（20ms/步），50 就是 25 步/秒（40ms/步）
+    // 两端：1 → 1000ms/步，100 → 100ms/步；中间对耗时线性插值
+    arena.setSpeed(1);
+    assert(Math.abs(arena.stepDelay() - 1000) < 1e-9, `speed=1 应为 1000ms，实际 ${arena.stepDelay()}`);
+    arena.setSpeed(100);
+    assert(Math.abs(arena.stepDelay() - 100) < 1e-9, `speed=100 应为 100ms，实际 ${arena.stepDelay()}`);
     arena.setSpeed(50);
-    assert(arena.stepDelay() === 40, `speed=50 时每步应为 40ms，实际 ${arena.stepDelay()}`);
+    assert(Math.abs(arena.stepDelay() - (1000 - 49 * 900 / 99)) < 1e-9,
+      `speed=50 应约为 554.5ms，实际 ${arena.stepDelay()}`);
 
     // 全程预估 = 最慢算法步数 × 单步延时（先回到最快，再对比"越慢越长"）
     arena.setSpeed(win.CONFIG.speed.max);
