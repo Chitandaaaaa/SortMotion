@@ -300,6 +300,14 @@ body::after{
   box-shadow:0 0 8px var(--glow-soft);
 }
 .btn:disabled{opacity:.35;cursor:not-allowed}
+/* 极速模式等「开关型」按钮的激活态 */
+.btn.on{
+  color:var(--green);
+  border-color:var(--green);
+  text-shadow:0 0 6px var(--green);
+  box-shadow:0 0 8px var(--glow-soft);
+}
+.srow input[type=range]:disabled{opacity:.35;cursor:not-allowed}
 .btn.wide{grid-column:1 / -1}
 
 .stat{

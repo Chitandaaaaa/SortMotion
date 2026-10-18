@@ -54,6 +54,7 @@ function Arena(view, hooks) {
   this.sound = null;
   this.dataMin = 0;
   this.dataMax = 100;
+  this.turbo = false;        // 极速模式（由 Visualizer.setTurbo 同步）
   this.soundAt = 0;          // 上次发环境音的时间戳，用于按 soundGapMs 节流
   this.soundCursor = 0;      // 轮询游标：轮流从还在跑的泳道里取样，避免总是同一条发声
   this.finishedCount = 0;    // 已冲线数量，用来给冲线音排序
@@ -141,7 +142,7 @@ Arena.prototype.setSpeed = function (v) {
    这是真实结果，不是估算误差：算法多、规模大、速度慢，本来就该跑得久。
    界面上的预估值也按这个算，所以开跑前就知道要等多久。 */
 Arena.prototype.stepDelay = function () {
-  return stepDelayMs(this.speed);
+  return stepDelayMs(this.speed, this.turbo);
 };
 
 /* 预估最慢算法的步数。要真跑一遍各个算法才知道步数，

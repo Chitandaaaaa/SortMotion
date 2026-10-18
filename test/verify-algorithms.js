@@ -207,6 +207,11 @@ check("CONFIG.arena 定义了竞技场参数（规模上限与主视图一致）
   // 线性性：跨度相同则耗时差相同（1→50.5 与 50.5→100 相等）
   assert(Math.abs((stepDelayMs(1) - stepDelayMs(50.5)) - (stepDelayMs(50.5) - stepDelayMs(100))) < 1e-9,
     "两端到中点的时间差应相等（线性插值）");
+  // 极速模式：固定 20ms/步，与速度滑块无关
+  assert(typeof CONFIG.turboMs === "number" && CONFIG.turboMs > 0, "缺少 turboMs");
+  assert(stepDelayMs(1, true) === CONFIG.turboMs, "极速模式下最慢档也应为 turboMs");
+  assert(stepDelayMs(100, true) === CONFIG.turboMs, "极速模式下最快档也应为 turboMs");
+  assert(stepDelayMs(50, false) !== CONFIG.turboMs, "未开极速时不应被 turbo 覆盖");
   assert(CONFIG.arena.cellWidth > 0 && CONFIG.arena.cellHeight > 0, "缺少单元格尺寸");
   assert(CONFIG.arena.cellMinHeight > 0 && CONFIG.arena.gridGap >= 0, "缺少单元格下限/间距");
 });

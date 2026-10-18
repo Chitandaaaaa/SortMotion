@@ -12,7 +12,9 @@ function $(id) { return document.getElementById(id); }
      delay = 1000 - (speed - 1) × (1000 - 100) / 99
    注意：线性的是「耗时」，不是「每秒步数」——后者是 1/delay，
    所以步/秒 在慢端变化平缓、快端更陡，这是这个规格的必然结果。 */
-function stepDelayMs(speed) {
+function stepDelayMs(speed, turbo) {
+  // 极速模式：直接压到 20ms/步，与速度滑块无关
+  if (turbo) return CONFIG.turboMs;
   var lo = CONFIG.stepMs.min, hi = CONFIG.stepMs.max;   // lo=最快(100ms)，hi=最慢(1000ms)
   var s = CONFIG.speed;
   var k = (speed - s.min) / (s.max - s.min);

@@ -545,6 +545,28 @@ function multisetEq(a, b) {
     arena.exit();
   });
 
+  check("极速模式：固定 20ms/步，忽略速度滑块", () => {
+    const arena = V.arena;
+    V.setTurbo(true);
+    assert(V.turbo, "未开启极速模式");
+    assert(doc.getElementById("speedRange").disabled, "开启后速度滑块应禁用");
+    assert(doc.getElementById("btnTurbo").classList.contains("on"), "按钮应有激活态");
+    assert(win.stepDelayMs(V.speed, true) === win.CONFIG.turboMs, "主视图应固定为 turboMs");
+
+    arena.enter();
+    arena.setSpeed(1);                       // 哪怕滑块在最慢档
+    assert(arena.stepDelay() === win.CONFIG.turboMs, "竞技场也应固定为 turboMs");
+    assert(/20ms/.test(doc.querySelector("#arenaBody .ahint").textContent),
+      "面板提示应显示 20ms，实际：" + doc.querySelector("#arenaBody .ahint").textContent);
+    arena.exit();
+
+    V.setTurbo(false);
+    assert(!doc.getElementById("speedRange").disabled, "关闭后应恢复速度滑块");
+    assert(!doc.getElementById("btnTurbo").classList.contains("on"), "按钮应取消激活态");
+    assert(arena.stepDelay() !== win.CONFIG.turboMs, "关闭后应回到滑块对应的速度");
+    arena.setSpeed(win.CONFIG.arena.speed.def);   // 还原
+  });
+
   check("沉浸模式：进入/退出、ESC 与上下方向键", () => {
     const root = doc.documentElement;
     assert(!root.classList.contains("immersive"), "默认不该处于沉浸模式");

@@ -12,6 +12,7 @@ var CONFIG = {
   // 主视图、竞技场、GIF 导出共用 utils.js 的 stepDelayMs()。
   speed: { def: 90, min: 1, max: 100 },
   stepMs: { max: 1000, min: 100 },       // 单步延时两端（slow / fast），与上面的 1..100 绑定
+  turboMs: 20,                           // 极速模式：固定 20ms/步（50 步/秒），忽略速度滑块
 
   maxLogLines: 800,                     // 日志行数上限，防止长序列把内存撑爆
   tooltipDelay: 1000,

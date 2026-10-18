@@ -58,6 +58,7 @@ function Visualizer() {
   this.btnCodeToggle = $("btnCodeToggle");
   this.btnArena = $("btnArena");
   this.btnImmersive = $("btnImmersive");
+  this.btnTurbo = $("btnTurbo");
   this.zenHint = $("zenHint");
   this.btnSndOn = $("btnSndOn");
   this.btnSndOff = $("btnSndOff");
@@ -84,6 +85,7 @@ function Visualizer() {
   this.count = CONFIG.count.def;
   this.speed = CONFIG.speed.def;
   this.immersive = false;
+  this.turbo = false;
   this.compares = 0;
   this.swaps = 0;
   this.stepCount = 0;
@@ -101,6 +103,7 @@ Visualizer.prototype.init = function () {
   this.bindSound();
   // 竞技场复用同一个音效引擎：SOUND 开关、音量、节流参数对两个视图同时生效
   this.arena.sound = this.sound;
+  this.arena.turbo = this.turbo;
   this.bindKeyboard();
 
   this.generateData();
@@ -309,6 +312,7 @@ Visualizer.prototype.bindControls = function () {
   this.btnCodeToggle.addEventListener("click", function () { self.codePanel.toggle(); });
   this.btnArena.addEventListener("click", function () { self.arena.enter(); });
   this.btnImmersive.addEventListener("click", function () { self.toggleImmersive(); });
+  this.btnTurbo.addEventListener("click", function () { self.setTurbo(!self.turbo); });
 
   this.countSlider.addEventListener("input", function () {
     self.count = parseInt(self.countSlider.value, 10);
@@ -345,6 +349,7 @@ Visualizer.prototype.bindKeyboard = function () {
     }
     if (k === "Escape" && self.immersive) { e.preventDefault(); self.exitImmersive(); return; }
     if (k === "f" || k === "F") { e.preventDefault(); self.toggleImmersive(); return; }
+    if (k === "t" || k === "T") { e.preventDefault(); self.setTurbo(!self.turbo); return; }
     if (k === "n" || k === "N" || k === "ArrowRight" || k === "ArrowDown") {
       e.preventDefault(); self.stepForward(); return;
     }
@@ -354,6 +359,23 @@ Visualizer.prototype.bindKeyboard = function () {
     if (k === "r" || k === "R") { e.preventDefault(); self.reset(); return; }
     if (k === "m" || k === "M") { e.preventDefault(); self.setSound(!self.sound.enabled); return; }
   });
+};
+
+/* ---------- 极速模式 ----------
+   固定 20ms/步（50 步/秒），忽略 Speed 滑块；主视图与竞技场同时生效。
+   关掉后恢复滑块的取值，滑块在开启期间禁用（避免"拖了没反应"的困惑）。 */
+Visualizer.prototype.setTurbo = function (on) {
+  this.turbo = !!on;
+  this.btnTurbo.classList.toggle("on", this.turbo);
+  this.btnTurbo.setAttribute("data-tip", this.turbo
+    ? "极速模式已开启：固定 20ms/步（50 步/秒）。再点一次或按 T 关闭"
+    : "极速模式：固定 20ms/步（50 步/秒），忽略 Speed 滑块；主视图与竞技场同时生效（快捷键：T）");
+  this.speedSlider.disabled = this.turbo;
+  this.nextAt = 0;                    // 节奏变了，重新起算
+  if (this.arena) {
+    this.arena.turbo = this.turbo;
+    if (this.arena.open && this.arena.phase === "setup") this.arena.view.refreshSetup(this.arena);
+  }
 };
 
 /* ---------- 沉浸模式 ----------
@@ -530,7 +552,7 @@ Visualizer.prototype.tick = function () {
   // setTimeout 的实际周期 = 延时 + 单步渲染耗时 + 定时器开销，不补偿的话快速档位会偏低。
   // 这里维护一条「计划时刻表」：每步把 nextAt 前移一个延时，实际等待 = nextAt - now，
   // 于是上一步超出的时间会在下一步被自动扣掉，平均节奏回到标称值。
-  var delay = stepDelayMs(this.speed);
+  var delay = stepDelayMs(this.speed, this.turbo);
   var now = Date.now();
   if (!this.nextAt) this.nextAt = now + delay;
   this.nextAt += delay;
