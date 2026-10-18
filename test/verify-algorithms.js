@@ -192,11 +192,14 @@ check("CONFIG.arena 定义了竞技场参数（规模上限与主视图一致）
     `speed 最大时应等于 stepMs.min(${CONFIG.stepMs.min})，实际 ${stepDelayMs(CONFIG.speed.max)}`);
   assert(stepDelayMs(CONFIG.speed.min) === CONFIG.stepMs.max,
     `speed 最小时应等于 stepMs.max(${CONFIG.stepMs.max})，实际 ${stepDelayMs(CONFIG.speed.min)}`);
-  for (const s of [2, 5, 10, 25, 40, 50, 80, 90]) {
-    assert(stepDelayMs(s) === 1000 / s, `speed=${s} 时每步延时应为 ${1000 / s}ms（线性速度）`);
+  // 满格 100 = 50 步/秒（20ms/步），即旧版 50 的节奏
+  assert(stepDelayMs(100) === 20, `speed=100 时每步应为 20ms，实际 ${stepDelayMs(100)}`);
+  assert(stepDelayMs(50) === 40, `speed=50 时每步应为 40ms，实际 ${stepDelayMs(50)}`);
+  for (const s of [2, 5, 10, 25, 40, 80, 90]) {
+    assert(stepDelayMs(s) === 2000 / s, `speed=${s} 时每步延时应为 ${2000 / s}ms（线性速度）`);
   }
   // 速度翻倍 → 每秒步数也翻倍
-  assert(Math.abs(1000 / stepDelayMs(40) - 2 * (1000 / stepDelayMs(20))) < 1e-9,
+  assert(Math.abs(2000 / stepDelayMs(40) - 2 * (2000 / stepDelayMs(20))) < 1e-9,
     "40 的速度应为 20 的两倍（线性）");
   assert(CONFIG.arena.cellWidth > 0 && CONFIG.arena.cellHeight > 0, "缺少单元格尺寸");
   assert(CONFIG.arena.cellMinHeight > 0 && CONFIG.arena.gridGap >= 0, "缺少单元格下限/间距");

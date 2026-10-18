@@ -6,13 +6,13 @@
 function $(id) { return document.getElementById(id); }
 
 /* 速度值(1..100) → 单步延时(ms)。主视图、竞技场、GIF 导出共用这一个公式。
-   契约：滑块数值 = 每秒推进的步数（线性）。
-     1 → 1 步/秒(1000ms/步)     50 → 50 步/秒(20ms/步)     100 → 100 步/秒(10ms/步)
+   契约：线性，满格 100 = 50 步/秒（也就是旧版 50 的节奏）。
+     1 → 0.5 步/秒(2000ms/步)   50 → 25 步/秒(40ms/步)   100 → 50 步/秒(20ms/步)
    注意不要写成「延时随 speed 线性递减」——那样速度是 1/延时的双曲线，
    前 90 格几乎没变化、最后 10 格暴涨，滑块手感极不均匀。 */
 function stepDelayMs(speed) {
   if (!(speed > 0)) speed = 1;
-  var ms = 1000 / speed;
+  var ms = 2000 / speed;
   var lo = CONFIG.stepMs.min, hi = CONFIG.stepMs.max;
   return ms < lo ? lo : (ms > hi ? hi : ms);
 }
