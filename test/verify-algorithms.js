@@ -21,7 +21,8 @@ const CORE_FILES = [
   "js/step-engine.js",
   "js/algorithms.js",
   "js/utils.js",
-  "js/fireworks.js"
+  "js/fireworks.js",
+  "js/audio.js"
 ];
 
 /* ---------- 1. 加载纯逻辑层 ---------- */
@@ -104,7 +105,7 @@ check("入口 HTML 引用了 styles.css", () => {
 
 check("入口 HTML 的脚本清单与纯逻辑层顺序一致", () => {
   const srcs = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
-  assert(srcs.length === 15, `脚本标签应为 15 个，实际 ${srcs.length}`);
+  assert(srcs.length === 16, `脚本标签应为 16 个，实际 ${srcs.length}`);
   CORE_FILES.forEach((f, i) => {
     assert(srcs[i] === f, `第 ${i + 1} 个脚本应为 ${f}，实际 ${srcs[i]}`);
   });

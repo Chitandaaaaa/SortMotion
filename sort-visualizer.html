@@ -47,6 +47,13 @@
       <input type="range" id="speedRange" min="1" max="100" value="90">
       <span class="sval" id="speedVal">90</span>
     </div>
+    <div class="srow">
+      <label>Sound</label>
+      <div class="snd-btns">
+        <button class="tbtn on" id="btnSndOn" data-tip="开启音效：比较按数值高低发出不同音高，交换是低频撞击，枢轴是铃音，完成时奏琶音（快捷键：M 切换）">ON</button>
+        <button class="tbtn" id="btnSndOff" data-tip="关闭音效，排序过程完全静音（快捷键：M 切换）">OFF</button>
+      </div>
+    </div>
     <div class="theme-btns">
       <button class="tbtn on" data-theme-btn="terminal" data-tip="TERMINAL 主题：纯黑底 + 荧光绿，经典 CRT 终端观感">TERMINAL</button>
       <button class="tbtn" data-theme-btn="gray" data-tip="GRAY 主题：黑灰降彩，仅用灰阶区分状态，适合投屏与录屏">GRAY</button>
@@ -121,9 +128,10 @@
 
 <!--
   脚本加载顺序即为依赖顺序，不要随意调整：
-    config → step-engine → algorithms → utils → fireworks
+    config → step-engine → algorithms → utils → fireworks → audio
       = 纯逻辑层（不依赖 DOM，test/verify-algorithms.js 直接抽取这一层跑单测）
     再往上依次是视图模块（含竞技场的 arena / arena-view），最后 visualizer（编排）与 boot（启动）。
+   audio 只依赖 config / step-engine，不碰 DOM，所以放在 fireworks 之后、视图模块之前。
 
   这里刻意使用经典 <script src> 而不是 ES Module：经典脚本在 file:// 下
   可以直接双击打开，而 type="module" 会被 CORS 拦截，必须起本地服务器。
@@ -133,6 +141,7 @@
 <script src="js/algorithms.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/fireworks.js"></script>
+<script src="js/audio.js"></script>
 <script src="js/bars-view.js"></script>
 <script src="js/log-panel.js"></script>
 <script src="js/stats-panel.js"></script>

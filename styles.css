@@ -276,6 +276,10 @@ body::after{
   text-shadow:0 0 6px var(--green);
   box-shadow:0 0 6px var(--glow-soft);
 }
+/* 音效开关：复用主题按钮外观，但要塞进 .srow 这一行里 */
+.snd-btns{display:flex;gap:6px;flex:1}
+.snd-btns .tbtn{padding:3px 2px;font-size:10px}
+.snd-btns .tbtn:disabled{opacity:.4;cursor:not-allowed}
 
 .controls{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px 10px}
 .btn{

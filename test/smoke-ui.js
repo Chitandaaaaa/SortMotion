@@ -5,7 +5,7 @@
    以 http://localhost/ 为基地址、用请求拦截器把外链资源映射回本地文件，
    等价于「起一个静态服务器打开页面」：styles.css 与 js/*.js 会被真实读取执行。
    然后像用户一样点左侧算法、单步走到结束，验证：
-     - 13 个脚本全部加载执行、没有资源 404
+     - 14 个脚本全部加载执行、没有资源 404
      - 17 个算法项都渲染出来且都有悬停说明
      - 每个算法都能从第一步走到 DONE，最终数据升序且元素不丢
      - PREV 回退后重放的结果与正向播放一致
@@ -105,18 +105,18 @@ function multisetEq(a, b) {
   // 再让出一轮宏任务，确保 load 之后排队的脚本也执行完
   await new Promise(resolve => setTimeout(resolve, 0));
 
-  check("外链资源全部加载成功（styles.css + 13 个 js）", () => {
+  check("外链资源全部加载成功（styles.css + 14 个 js）", () => {
     assert(loadErrors.length === 0, loadErrors.slice(0, 3).join(" | "));
     const links = doc.querySelectorAll('link[rel="stylesheet"]');
     assert(links.length === 1, `样式表引用应为 1 个，实际 ${links.length}`);
     const scripts = doc.querySelectorAll("script[src]");
-    assert(scripts.length === 15, `外链脚本应为 15 个，实际 ${scripts.length}`);
+    assert(scripts.length === 16, `外链脚本应为 16 个，实际 ${scripts.length}`);
   });
 
-  check("15 个脚本的全局导出都到位（说明按依赖顺序执行成功）", () => {
+  check("16 个脚本的全局导出都到位（说明按依赖顺序执行成功）", () => {
     const expected = [
       "CONFIG", "StepType", "StepEngine", "AlgorithmBase", "SORT_ALGORITHMS",
-      "AlgorithmRegistry", "readThemeColors", "drawMiniBars", "Fireworks",
+      "AlgorithmRegistry", "readThemeColors", "drawMiniBars", "Fireworks", "SoundEngine",
       "BarsView", "LogPanel", "StatsPanel", "CelebrationScreen",
       "GifExporter", "CodePanel", "Arena", "ArenaView", "racerMetrics",
       "Visualizer", "boot"
@@ -290,6 +290,23 @@ function multisetEq(a, b) {
     assert(doc.documentElement.getAttribute("data-theme") === "gray", "未切到 gray 主题");
     btns[0].dispatchEvent(new win.Event("click", { bubbles: true }));
     assert(!doc.documentElement.getAttribute("data-theme"), "未切回 terminal 主题");
+  });
+
+  check("音效开关：无 Web Audio 时置灰降级，点击不抛异常", () => {
+    const on = doc.getElementById("btnSndOn");
+    const off = doc.getElementById("btnSndOff");
+    assert(on && off, "缺少音效开关按钮");
+    // jsdom 没有 Web Audio，点两下只验证不抛异常
+    on.dispatchEvent(new win.Event("click", { bubbles: true }));
+    off.dispatchEvent(new win.Event("click", { bubbles: true }));
+    if (typeof win.AudioContext === "undefined" && typeof win.webkitAudioContext === "undefined") {
+      assert(on.disabled && off.disabled, "无 Web Audio 时按钮应置灰而不是假装可用");
+      assert(V.sound.enabled === false, "无 Web Audio 时音效应关闭");
+    }
+    // 无论支不支持，单步执行都不该因为音效抛错
+    V.reset();
+    V.stepForward();
+    assert(V.currentStep === 1, "带音效的单步执行异常");
   });
 
   check("竞技场：打开 → 选择 → 同屏开跑 → 结算冠亚季", () => {

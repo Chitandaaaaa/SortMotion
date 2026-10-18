@@ -17,6 +17,16 @@ var CONFIG = {
   tooltipDelay: 1000,
   uiTickMs: 100,                        // 运行中计时刷新间隔
 
+  /* 声音特效（Web Audio 实时合成，不加载音频文件） */
+  sound: {
+    volume: 0.5,          // 主音量（0~1），各音色在此基础上再乘自己的增益
+    minGapMs: 22,         // 两次发声的最小间隔，超出直接丢音（约 45 音/秒）
+    maxVoices: 14,        // 同时发声的振荡器上限，防止高密度时堆成噪音墙
+    freqBase: 220,        // 音高基准 A3
+    levels: 10,           // 五声音阶音级数：0..10 → 正好 2 个八度（220~880Hz）
+    storageKey: "sortviz.sound"
+  },
+
   // 柱子间距：n 越大留白越少，否则空白比柱子还宽
   barGap: { dense: 1, mid: 2, wide: 3, denseAbove: 70, midAbove: 40 },
 

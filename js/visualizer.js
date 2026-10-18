@@ -57,6 +57,14 @@ function Visualizer() {
   this.btnClear = $("btnClear");
   this.btnCodeToggle = $("btnCodeToggle");
   this.btnArena = $("btnArena");
+  this.btnSndOn = $("btnSndOn");
+  this.btnSndOff = $("btnSndOff");
+
+  // ---- 声音（Web Audio 实时合成；不支持时自动降级为静音）----
+  this.sound = new SoundEngine();
+  // 音高映射区间：由初始数据极值决定，整轮复用（数值本身不变，只是换位置）
+  this.dataMin = 0;
+  this.dataMax = 100;
 
   // ---- 运行状态 ----
   this.data = [];
@@ -87,6 +95,7 @@ Visualizer.prototype.init = function () {
   this.bindTooltip();
   this.bindControls();
   this.bindTheme();
+  this.bindSound();
   this.bindKeyboard();
 
   this.generateData();
@@ -236,6 +245,41 @@ Visualizer.prototype.bindTheme = function () {
   }
 };
 
+/* ---------- 音效开关 ---------- */
+Visualizer.prototype.bindSound = function () {
+  var self = this;
+
+  // 浏览器不支持 Web Audio（老版本 / 被策略禁用）时按钮置灰，而不是假装能用
+  if (!this.sound.supported()) {
+    this.btnSndOn.disabled = true;
+    this.btnSndOff.disabled = true;
+    this.btnSndOn.setAttribute("data-tip", "当前浏览器不支持 Web Audio，音效不可用");
+    this.btnSndOff.setAttribute("data-tip", "当前浏览器不支持 Web Audio，音效不可用");
+    this.sound.setEnabled(false);
+    this.syncSoundUI();
+    return;
+  }
+
+  this.btnSndOn.addEventListener("click", function () { self.setSound(true); });
+  this.btnSndOff.addEventListener("click", function () { self.setSound(false); });
+  this.syncSoundUI();
+};
+
+Visualizer.prototype.syncSoundUI = function () {
+  var on = this.sound.enabled;
+  this.btnSndOn.classList.toggle("on", on);
+  this.btnSndOff.classList.toggle("on", !on);
+};
+
+Visualizer.prototype.setSound = function (on) {
+  if (on && !this.sound.supported()) return;
+  this.sound.setEnabled(on);
+  this.syncSoundUI();
+  // 开启时给一声确认音。这次点击同时是 AudioContext 的「解锁手势」，
+  // 之后由定时器触发的音才不会被浏览器的自动播放策略拦掉。
+  if (on && this.sound.unlock()) this.sound.playToggle();
+};
+
 /* ---------- 按钮 & 滑块 ---------- */
 Visualizer.prototype.bindControls = function () {
   var self = this;
@@ -288,6 +332,7 @@ Visualizer.prototype.bindKeyboard = function () {
     if (k === "n" || k === "N" || k === "ArrowRight") { e.preventDefault(); self.stepForward(); return; }
     if (k === "b" || k === "B" || k === "ArrowLeft") { e.preventDefault(); self.stepBackward(); return; }
     if (k === "r" || k === "R") { e.preventDefault(); self.reset(); return; }
+    if (k === "m" || k === "M") { e.preventDefault(); self.setSound(!self.sound.enabled); return; }
   });
 };
 
@@ -353,6 +398,14 @@ Visualizer.prototype.prepareSteps = function () {
   for (var i = 0; i < this.steps.length; i++) {
     if (StepEngine.isCounted(this.steps[i].type)) this.total++;
   }
+  // 音高映射区间：取初始数据极值，整轮排序复用
+  var mn = Infinity, mx = -Infinity;
+  for (var k = 0; k < this.originalData.length; k++) {
+    if (this.originalData[k] < mn) mn = this.originalData[k];
+    if (this.originalData[k] > mx) mx = this.originalData[k];
+  }
+  this.dataMin = isFinite(mn) ? mn : 0;
+  this.dataMax = isFinite(mx) ? mx : 100;
   this.addLogRunHeader();
 };
 
@@ -369,6 +422,7 @@ Visualizer.prototype.addLogRunHeader = function () {
 /* ---------- 播放控制 ---------- */
 Visualizer.prototype.play = function () {
   if (this.isPlaying) return;
+  this.sound.unlock();       // 借这次点击/按键的手势栈解锁音频
   if (this.steps.length === 0) this.prepareSteps();
   if (this.currentStep >= this.steps.length) {
     this.reset();                       // 已完成 → 从头再来
@@ -405,6 +459,7 @@ Visualizer.prototype.tick = function () {
 
 Visualizer.prototype.stepForward = function () {
   if (this.isPlaying) this.pause();
+  this.sound.unlock();
   if (this.steps.length === 0) this.prepareSteps();
   if (this.currentStep >= this.steps.length) return;
   if (!this.startTime) this.startTime = Date.now();
@@ -444,7 +499,7 @@ Visualizer.prototype.replayTo = function (target) {
   this.addLogRunHeader();
 
   for (var i = 0; i < target; i++) {
-    this.applyStep(this.steps[i]);
+    this.applyStep(this.steps[i], true);   // 静默重放，不发声
     this.currentStep = i + 1;
   }
   this.updateBars();
@@ -457,7 +512,7 @@ Visualizer.prototype.executeStep = function () {
   this.applyStep(this.steps[this.currentStep]);
 };
 
-Visualizer.prototype.applyStep = function (step) {
+Visualizer.prototype.applyStep = function (step, silent) {
   var state = { data: this.data, sortedSet: this.sortedSet, highlight: this.activeHL };
   var logType = StepEngine.apply(state, step);
   this.data = state.data;
@@ -468,6 +523,8 @@ Visualizer.prototype.applyStep = function (step) {
   this.compares = step.compareCount;
   this.swaps = step.swapCount;
   this.stepCount = step.compareCount + step.swapCount;
+  // 声音放在状态更新之后：SWAP/SET 的 step.data 已是交换后的快照
+  this.sound.playStep(step, this.data, this.dataMin, this.dataMax, silent);
 };
 
 Visualizer.prototype.finish = function () {
