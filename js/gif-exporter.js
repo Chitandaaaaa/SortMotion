@@ -202,7 +202,8 @@ var GifExporter = {
         }
 
         /* ===== 段 2：排序帧 ===== */
-        var baseDelay = Math.max(G.frameDelayMin, CONFIG.delayBase - opts.speed * CONFIG.delayFactor);
+        // 与页面同一套速度语义：单步延时 × 每帧合并的步数
+        var baseDelay = Math.max(G.frameDelayMin, stepDelayMs(opts.speed));
         var totalSteps = simSteps.length;
         var perFrame = Math.max(1, Math.ceil(totalSteps / G.maxSortFrames));
         var sortDelay = Math.min(G.maxSortDelay, baseDelay * perFrame);

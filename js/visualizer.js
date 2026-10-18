@@ -429,6 +429,7 @@ Visualizer.prototype.play = function () {
   if (this.currentStep >= this.steps.length) {
     this.reset();                       // 已完成 → 从头再来
   }
+  this.nextAt = 0;
   if (!this.startTime) this.startTime = Date.now();
   this.finished = false;
   this.isPlaying = true;
@@ -438,6 +439,7 @@ Visualizer.prototype.play = function () {
 
 Visualizer.prototype.pause = function (silent) {
   this.isPlaying = false;
+  this.nextAt = 0;          // 下次播放重新起算，别把暂停时长算进节奏
   this.clearTimer();
   if (!silent) {
     if (!this.finished && this.currentStep > 0) this.setStatus("PAUSED");
@@ -449,13 +451,25 @@ Visualizer.prototype.tick = function () {
   var self = this;
   if (!this.isPlaying) return;
   if (this.currentStep >= this.steps.length) { this.finish(); return; }
+
+  var t0 = Date.now();
   this.executeStep();
   this.currentStep++;
   this.updateBars();
   this.updateStats();
   if (this.currentStep >= this.steps.length) { this.finish(); return; }
-  // 与竞技场共用同一个速度换算（见 utils.js 的 stepDelayMs）
-  this.timer = setTimeout(function () { self.tick(); }, stepDelayMs(this.speed));
+
+  // 与竞技场共用同一个速度换算（见 utils.js 的 stepDelayMs）。
+  // setTimeout 的实际周期 = 延时 + 单步渲染耗时 + 定时器开销，不补偿的话快速档位会偏低。
+  // 这里维护一条「计划时刻表」：每步把 nextAt 前移一个延时，实际等待 = nextAt - now，
+  // 于是上一步超出的时间会在下一步被自动扣掉，平均节奏回到标称值。
+  var delay = stepDelayMs(this.speed);
+  var now = Date.now();
+  if (!this.nextAt) this.nextAt = now + delay;
+  this.nextAt += delay;
+  var wait = this.nextAt - now;
+  if (wait < 1) { wait = 1; this.nextAt = now + 1; }   // 落后太多就重置，不做无限追赶
+  this.timer = setTimeout(function () { self.tick(); }, wait);
 };
 
 Visualizer.prototype.stepForward = function () {

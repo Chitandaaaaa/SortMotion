@@ -552,10 +552,14 @@ function multisetEq(a, b) {
     arena.setSpeed(win.CONFIG.speed.max);
     assert(arena.stepDelay() === win.stepDelayMs(win.CONFIG.speed.max),
       "最快时每步延时与主视图不一致");
-    assert(arena.stepDelay() === win.CONFIG.delayMin, "speed=100 时应等于 delayMin");
+    assert(arena.stepDelay() === win.CONFIG.stepMs.min,
+      `speed=100 时应等于 stepMs.min(${win.CONFIG.stepMs.min})`);
     arena.setSpeed(win.CONFIG.speed.min);
-    assert(arena.stepDelay() === win.CONFIG.delayBase - win.CONFIG.speed.min * win.CONFIG.delayFactor,
-      "speed=1 时应等于主视图公式");
+    assert(arena.stepDelay() === win.CONFIG.stepMs.max,
+      `speed=1 时应等于 stepMs.max(${win.CONFIG.stepMs.max})`);
+    // 线性：数值 = 每秒步数
+    arena.setSpeed(50);
+    assert(arena.stepDelay() === 20, `speed=50 时每步应为 20ms，实际 ${arena.stepDelay()}`);
 
     // 全程预估 = 最慢算法步数 × 单步延时（先回到最快，再对比"越慢越长"）
     arena.setSpeed(win.CONFIG.speed.max);

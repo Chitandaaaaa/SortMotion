@@ -7,11 +7,10 @@
 var CONFIG = {
   data: { min: 10, max: 99 },          // 随机数据值域（闭区间）
   count: { def: 20, min: 5, max: 100 },
+  // 速度滑块 = 每秒推进的步数（线性）：1 → 1 步/秒(1000ms/步)，100 → 100 步/秒(10ms/步)。
+  // 主视图、竞技场、GIF 导出共用 utils.js 的 stepDelayMs()。
   speed: { def: 90, min: 1, max: 100 },
-
-  delayBase: 810,                       // 单步延时(ms) = delayBase - speed * delayFactor
-  delayFactor: 8,
-  delayMin: 10,
+  stepMs: { min: 10, max: 1000 },        // 单步延时的夹取范围，对应上面的两端
 
   maxLogLines: 800,                     // 日志行数上限，防止长序列把内存撑爆
   tooltipDelay: 1000,

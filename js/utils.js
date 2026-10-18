@@ -5,11 +5,16 @@
    ======================================================================= */
 function $(id) { return document.getElementById(id); }
 
-/* 速度值(1..100) → 单步延时(ms)。主视图与竞技场共用这一个公式：
-   同一个 speed，两边每一步的节奏完全一致（1 → 802ms，100 → 10ms）。 */
+/* 速度值(1..100) → 单步延时(ms)。主视图、竞技场、GIF 导出共用这一个公式。
+   契约：滑块数值 = 每秒推进的步数（线性）。
+     1 → 1 步/秒(1000ms/步)     50 → 50 步/秒(20ms/步)     100 → 100 步/秒(10ms/步)
+   注意不要写成「延时随 speed 线性递减」——那样速度是 1/延时的双曲线，
+   前 90 格几乎没变化、最后 10 格暴涨，滑块手感极不均匀。 */
 function stepDelayMs(speed) {
-  var d = CONFIG.delayBase - speed * CONFIG.delayFactor;
-  return d < CONFIG.delayMin ? CONFIG.delayMin : d;
+  if (!(speed > 0)) speed = 1;
+  var ms = 1000 / speed;
+  var lo = CONFIG.stepMs.min, hi = CONFIG.stepMs.max;
+  return ms < lo ? lo : (ms > hi ? hi : ms);
 }
 
 function lerp(a, b, t) { return a + (b - a) * t; }

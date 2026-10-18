@@ -127,7 +127,8 @@ check("CONFIG 集中定义了数据范围与延时参数", () => {
   assert(CONFIG && typeof CONFIG === "object", "CONFIG 缺失");
   assert(CONFIG.data && CONFIG.data.min === 10 && CONFIG.data.max === 99,
     "数据范围应为 10~99，实际 " + JSON.stringify(CONFIG.data));
-  assert(typeof CONFIG.delayBase === "number", "delayBase 缺失");
+  assert(CONFIG.stepMs && CONFIG.stepMs.min > 0 && CONFIG.stepMs.max > CONFIG.stepMs.min,
+    "缺少单步延时区间 stepMs");
   assert(CONFIG.barGap && typeof CONFIG.barGap.denseAbove === "number", "barGap 缺失");
 });
 
@@ -186,9 +187,17 @@ check("CONFIG.arena 定义了竞技场参数（规模上限与主视图一致）
   assert(sp.def === CONFIG.speed.def,
     `竞技场默认速度应与主视图一致，实际 ${sp.def} vs ${CONFIG.speed.def}`);
   assert(typeof stepDelayMs === "function", "缺少主视图/竞技场共用的 stepDelayMs");
-  assert(stepDelayMs(CONFIG.speed.max) === CONFIG.delayMin, "speed 最大时应等于 delayMin");
-  assert(stepDelayMs(CONFIG.speed.min) === CONFIG.delayBase - CONFIG.speed.min * CONFIG.delayFactor,
-    "speed 最小时应等于 delayBase - speed*delayFactor");
+  // 契约：滑块数值 = 每秒步数（线性）。延时必须是 1000/speed，而不是线性递减。
+  assert(stepDelayMs(CONFIG.speed.max) === CONFIG.stepMs.min,
+    `speed 最大时应等于 stepMs.min(${CONFIG.stepMs.min})，实际 ${stepDelayMs(CONFIG.speed.max)}`);
+  assert(stepDelayMs(CONFIG.speed.min) === CONFIG.stepMs.max,
+    `speed 最小时应等于 stepMs.max(${CONFIG.stepMs.max})，实际 ${stepDelayMs(CONFIG.speed.min)}`);
+  for (const s of [2, 5, 10, 25, 40, 50, 80, 90]) {
+    assert(stepDelayMs(s) === 1000 / s, `speed=${s} 时每步延时应为 ${1000 / s}ms（线性速度）`);
+  }
+  // 速度翻倍 → 每秒步数也翻倍
+  assert(Math.abs(1000 / stepDelayMs(40) - 2 * (1000 / stepDelayMs(20))) < 1e-9,
+    "40 的速度应为 20 的两倍（线性）");
   assert(CONFIG.arena.cellWidth > 0 && CONFIG.arena.cellHeight > 0, "缺少单元格尺寸");
   assert(CONFIG.arena.cellMinHeight > 0 && CONFIG.arena.gridGap >= 0, "缺少单元格下限/间距");
 });
