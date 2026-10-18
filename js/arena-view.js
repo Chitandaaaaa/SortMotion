@@ -90,6 +90,7 @@ ArenaView.prototype.formatSpeedHint = function (arena) {
 ArenaView.prototype.showSetup = function (arena) {
   var self = this;
   this.bodyEl.innerHTML = "";
+  this.bodyEl.classList.remove("result");
   this.chips = {};
 
   var wrap = document.createElement("div");
@@ -286,6 +287,7 @@ ArenaView.prototype.gridMetrics = function (count, total) {
 
 ArenaView.prototype.showRace = function (arena) {
   this.bodyEl.innerHTML = "";
+  this.bodyEl.classList.remove("result");   // 回到比赛视图：取消格子的虚化
   var m = this.gridMetrics(arena.racers.length, AlgorithmRegistry.getAll().length);
 
   var grid = document.createElement("div");
@@ -382,13 +384,15 @@ ArenaView.prototype.removeReady = function () {
 ArenaView.prototype.removeResult = function () {
   var el = this.bodyEl.querySelector(".aresult");
   if (el && el.parentNode) el.parentNode.removeChild(el);
+  this.bodyEl.classList.remove("result");
 };
 
 ArenaView.prototype.drawLanes = function (arena) {
   if (!arena.racers.length || !arena.racers[0].canvas) return;
   var colors = readThemeColors();
-  // 结算阶段把柱子画淡：直接改画布 alpha，而不是在整屏上叠黑纱
-  var ghost = arena.phase === "result" ? CONFIG.arena.resultGhostAlpha : 1;
+  // 结算时整个网格由 CSS 做 blur + 30% 透明度（.arena-body.result .agrid），
+  // 画布本身按 1 画，避免两处叠加导致深浅不可控
+  var ghost = 1;
 
   for (var i = 0; i < arena.racers.length; i++) {
     var rc = arena.racers[i];
@@ -471,6 +475,8 @@ ArenaView.prototype.showResult = function (arena) {
   }
 
   this.bodyEl.appendChild(wrap);
+  // 关键：只虚化网格（.agrid），结算层是它的兄弟节点，保持清晰
+  this.bodyEl.classList.add("result");
   this.renderHead(arena);   // 顶部按钮在虚化层之外，保持清晰可点
 };
 

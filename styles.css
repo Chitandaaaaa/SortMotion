@@ -682,6 +682,14 @@ body::after{
 }
 .aresult-head{font-size:11px;color:var(--dim);letter-spacing:1px;flex-shrink:0}
 
+/* 结算时把【比赛网格】虚化到 30%：排行榜是 .agrid 的兄弟节点，因此保持清晰。
+   模糊半径别调太大 —— 柱子本身已经看不太清，再大就只剩一团色块。 */
+.arena-body.result .agrid{
+  filter:blur(3px) saturate(.85);
+  opacity:.3;
+  transition:filter .3s ease,opacity .3s ease;
+}
+
 /* 前三名：不用方框，改用「大号奖牌 + 细分隔线 + 称号」的榜单排版 */
 .apodium{
   width:100%;
@@ -771,4 +779,54 @@ body::after{
 /* 动画被禁用时（系统开了「减少动态效果」）直接显示，不能因为 animation 被跳过而留在 opacity:0 */
 @media (prefers-reduced-motion: reduce){
   .apodium-row,.arest{animation:none;opacity:1}
+}
+
+/* =====================================================================
+   沉浸模式：只留动画区
+   进入方式：CONTROLS 里的 IMMERSIVE 或 F 键；退出：ESC。
+   同时尝试真全屏（requestFullscreen），拿不到权限时靠这套 CSS 铺满视口。
+   ===================================================================== */
+html.immersive .titlebar,
+html.immersive .col-left,
+html.immersive .col-right,
+html.immersive .bottom{
+  display:none;
+}
+html.immersive .main{
+  position:fixed;
+  inset:0;
+  z-index:9000;          /* 低于庆祝弹窗(10000)，完赛烟花仍能盖住 */
+  background:var(--bg);
+  overflow:hidden;
+}
+html.immersive .col-mid{min-width:0}
+html.immersive .viz{padding:10px}
+
+/* 底部操作提示：进入后淡入，6 秒后自动淡出，不长期挡画面 */
+.zenhint{
+  display:none;
+  position:fixed;
+  left:50%;
+  bottom:16px;
+  transform:translateX(-50%);
+  z-index:9002;
+  padding:7px 16px;
+  border:1px solid var(--border2);
+  background:rgba(0,0,0,.62);
+  color:var(--dim);
+  font-size:11px;
+  letter-spacing:.6px;
+  white-space:nowrap;
+  pointer-events:none;
+  opacity:0;
+}
+html.immersive .zenhint{
+  display:block;
+  animation:zenHint 6s ease forwards;
+}
+@keyframes zenHint{
+  0%{opacity:0}
+  8%{opacity:1}
+  78%{opacity:1}
+  100%{opacity:0}
 }

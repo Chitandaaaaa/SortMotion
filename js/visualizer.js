@@ -57,6 +57,8 @@ function Visualizer() {
   this.btnClear = $("btnClear");
   this.btnCodeToggle = $("btnCodeToggle");
   this.btnArena = $("btnArena");
+  this.btnImmersive = $("btnImmersive");
+  this.zenHint = $("zenHint");
   this.btnSndOn = $("btnSndOn");
   this.btnSndOff = $("btnSndOff");
 
@@ -81,6 +83,7 @@ function Visualizer() {
   this.selectedAlgo = "bubble";
   this.count = CONFIG.count.def;
   this.speed = CONFIG.speed.def;
+  this.immersive = false;
   this.compares = 0;
   this.swaps = 0;
   this.stepCount = 0;
@@ -109,6 +112,14 @@ Visualizer.prototype.init = function () {
   this.setStatus("READY");
 
   var self = this;
+  // 用户按 ESC 退出系统全屏时，同步收起沉浸布局
+  document.addEventListener("fullscreenchange", function () {
+    if (!document.fullscreenElement && self.immersive) self.exitImmersive(true);
+  });
+  document.addEventListener("webkitfullscreenchange", function () {
+    if (!document.webkitFullscreenElement && self.immersive) self.exitImmersive(true);
+  });
+
   // 运行中刷新计时
   setInterval(function () {
     if (self.startTime && !self.finished) self.updateStats();
@@ -297,6 +308,7 @@ Visualizer.prototype.bindControls = function () {
   this.btnClear.addEventListener("click", function () { self.log.clear(); });
   this.btnCodeToggle.addEventListener("click", function () { self.codePanel.toggle(); });
   this.btnArena.addEventListener("click", function () { self.arena.enter(); });
+  this.btnImmersive.addEventListener("click", function () { self.toggleImmersive(); });
 
   this.countSlider.addEventListener("input", function () {
     self.count = parseInt(self.countSlider.value, 10);
@@ -331,11 +343,66 @@ Visualizer.prototype.bindKeyboard = function () {
       if (self.isPlaying) self.pause(); else self.play();
       return;
     }
-    if (k === "n" || k === "N" || k === "ArrowRight") { e.preventDefault(); self.stepForward(); return; }
-    if (k === "b" || k === "B" || k === "ArrowLeft") { e.preventDefault(); self.stepBackward(); return; }
+    if (k === "Escape" && self.immersive) { e.preventDefault(); self.exitImmersive(); return; }
+    if (k === "f" || k === "F") { e.preventDefault(); self.toggleImmersive(); return; }
+    if (k === "n" || k === "N" || k === "ArrowRight" || k === "ArrowDown") {
+      e.preventDefault(); self.stepForward(); return;
+    }
+    if (k === "b" || k === "B" || k === "ArrowLeft" || k === "ArrowUp") {
+      e.preventDefault(); self.stepBackward(); return;
+    }
     if (k === "r" || k === "R") { e.preventDefault(); self.reset(); return; }
     if (k === "m" || k === "M") { e.preventDefault(); self.setSound(!self.sound.enabled); return; }
   });
+};
+
+/* ---------- 沉浸模式 ----------
+   把动画区铺满整个视口，只留柱状图与图例：
+   左右栏 / 底部日志代码栏 / 标题栏全部隐藏（CSS 的 html.immersive）。
+   同时尝试真全屏（浏览器 chrome 也消失）；拿不到权限（非手势、iframe 限制）时
+   仅靠 CSS 铺满窗口，功能不受影响。 */
+Visualizer.prototype.toggleImmersive = function () {
+  if (this.immersive) this.exitImmersive();
+  else this.enterImmersive();
+};
+
+Visualizer.prototype.enterImmersive = function () {
+  if (this.immersive) return;
+  this.immersive = true;
+  document.documentElement.classList.add("immersive");
+  this.btnImmersive.textContent = "EXIT ZEN";
+  this.btnImmersive.setAttribute("data-tip", "退出沉浸模式（ESC）");
+  this.syncBars();                 // 版面变化后立刻按新容器宽度重算
+
+  var el = document.documentElement;
+  var fn = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (fn) {
+    try {
+      var p = fn.call(el);
+      if (p && p.catch) p.catch(function () { /* 没拿到全屏权限：CSS 已经铺满，忽略 */ });
+    } catch (e) { /* 同上 */ }
+  }
+};
+
+Visualizer.prototype.exitImmersive = function (skipApi) {
+  if (!this.immersive) return;
+  this.immersive = false;
+  document.documentElement.classList.remove("immersive");
+  this.btnImmersive.textContent = "IMMERSIVE";
+  this.btnImmersive.setAttribute("data-tip",
+    "沉浸模式：动画区铺满整个屏幕，只留柱状图。空格播放/暂停，↑← 上一步，↓→ 下一步，ESC 退出（快捷键：F）");
+  this.syncBars();
+
+  if (skipApi) return;             // 由 fullscreenchange 回调进来的，别再去退出全屏
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    var fn = document.exitFullscreen || document.webkitExitFullscreen;
+    if (fn) {
+      try {
+        var p = fn.call(document);
+        if (p && p.catch) p.catch(function () {});
+      } catch (e) {}
+    }
+  }
 };
 
 /* ---------- 数据 ---------- */

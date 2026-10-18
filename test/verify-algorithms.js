@@ -357,11 +357,11 @@ check("竞技场结算：半透明不虚化 + 前三名逐个亮相 + 其余整�
     ".aresult 不该虚化 —— 会看不清底下的柱状图");
   assert(/background\s*:\s*transparent/.test(res[0]),
     ".aresult 不该叠整屏黑纱 —— 应改为柱状图本身按 alpha 淡出");
-  assert(typeof CONFIG.arena.resultGhostAlpha === "number" &&
-    CONFIG.arena.resultGhostAlpha > 0 && CONFIG.arena.resultGhostAlpha <= 1,
-    "CONFIG.arena.resultGhostAlpha 应在 (0,1]");
-  assert(CONFIG.arena.resultGhostAlpha === 0.8,
-    "结算时柱状图应淡到 80%，实际 " + CONFIG.arena.resultGhostAlpha);
+  // 结算时把比赛网格虚化到 30%：规则挂在 .agrid 上，排行榜（兄弟节点）不受影响
+  const dim = css.match(/\.arena-body\.result \.agrid\{[^}]*\}/);
+  assert(dim, "缺少 .arena-body.result .agrid 的虚化规则");
+  assert(/opacity\s*:\s*0?\.3\b/.test(dim[0]), "结算时网格应淡到 30%，实际：" + dim[0]);
+  assert(/filter\s*:\s*blur\(/.test(dim[0]), "结算时网格应虚化，实际：" + dim[0]);
   // 可读性靠文字光晕，而不是靠糊背景
   assert(/text-shadow/.test(css), "排行榜文字需要 text-shadow 光晕，保证压在柱状图上可读");
   // 就绪层不能有整屏遮罩（否则会压暗已初始化的柱子），按钮要自带实底

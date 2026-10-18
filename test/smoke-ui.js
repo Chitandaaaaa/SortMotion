@@ -529,11 +529,38 @@ function multisetEq(a, b) {
     st.alphas.length = 0;
     arena.view.drawLanes(arena);
     const resultAlpha = st.alphas[0];
-    assert(resultAlpha === 0.8, "结算时柱状图应淡到 80%，实际 alpha=" + resultAlpha);
-    assert(resultAlpha === win.CONFIG.arena.resultGhostAlpha, "应与 CONFIG.arena.resultGhostAlpha 一致");
+    // 画布按 1 画，透明度/虚化统一交给 CSS（两处叠加会让深浅不可控）
+    assert(resultAlpha === 1, "结算时画布应按 1 绘制，实际 alpha=" + resultAlpha);
+    const bodyEl = doc.getElementById("arenaBody");
+    assert(bodyEl.classList.contains("result"),
+      "结算时 .arena-body 应加 result 类（CSS 据此虚化网格）");
+    assert(bodyEl.querySelector(".agrid"), "结算时网格必须留着（作为虚化背景）");
     // 画完要把 globalAlpha 复原，否则会污染后续绘制
     assert(rec.globalAlpha === 1, "绘制结束后 globalAlpha 应复原为 1");
     arena.exit();
+  });
+
+  check("沉浸模式：进入/退出、ESC 与上下方向键", () => {
+    const root = doc.documentElement;
+    assert(!root.classList.contains("immersive"), "默认不该处于沉浸模式");
+
+    V.enterImmersive();
+    assert(V.immersive, "未进入沉浸模式");
+    assert(root.classList.contains("immersive"), "html 上没有 immersive 类（CSS 靠它隐藏其它面板）");
+    assert(doc.getElementById("zenHint"), "缺少沉浸模式的按键提示条");
+
+    // ↑ / ↓ 也要能单步
+    V.reset();
+    assert(V.currentStep === 0, "重置后应回到第 0 步");
+    doc.dispatchEvent(new win.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    assert(V.currentStep === 1, "↓ 应是下一步");
+    doc.dispatchEvent(new win.KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+    assert(V.currentStep === 0, "↑ 应是上一步");
+
+    // ESC 退出
+    doc.dispatchEvent(new win.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    assert(!V.immersive, "ESC 没有退出沉浸模式");
+    assert(!root.classList.contains("immersive"), "退出后应移除 immersive 类");
   });
 
   check("竞技场速度：与主视图共用同一换算式（每步延时）", () => {
