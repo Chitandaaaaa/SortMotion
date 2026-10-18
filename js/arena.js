@@ -15,6 +15,10 @@
    所以「按比较次数排名」对它们没有意义，需要单独标注。 */
 var ARENA_NONCOMPARE = ["counting", "radix", "bucket"];
 
+/* 单帧计入的最大时间增量(ms)。切到后台时 rAF 会停，回来那一帧的 dt 可能是几分钟：
+   既不该一次性补几百步，也不该把这段挂起时间算进比赛用时。 */
+var ARENA_MAX_DT = 100;
+
 /* 快捷阵容（names 为 null 表示全部） */
 var ARENA_PRESETS = [
   { key: "all", label: "全部 17 个", names: null },
@@ -24,7 +28,6 @@ var ARENA_PRESETS = [
   { key: "contrast", label: "悬殊对比", names: ["counting", "radix", "bubble", "cycle"] }
 ];
 
-var FRAME_MS = 1000 / 60;
 
 function Arena(view, hooks) {
   this.view = view;
@@ -40,11 +43,12 @@ function Arena(view, hooks) {
 
   this.racers = [];
   this.maxSteps = 0;
-  this.stepsPerFrame = 0;        // 小数，用累积器凑整
-  this.carry = 0;
-  this.frame = 0;
+  this.elapsed = 0;              // 比赛时钟(ms)：只在跑动时累加，暂停不长
+  this.stepAcc = 0;              // 时间累积器：攒够一个「单步延时」就推进 1 步
+  this.lastTs = 0;
   this.raf = null;
   this.result = null;
+  this._est = null;              // 全程时长预估缓存 { key, maxSteps }
 
   // ---- 音效：由 Visualizer 在 init() 里注入同一个 SoundEngine（共用 ON/OFF 开关）----
   this.sound = null;
@@ -129,17 +133,36 @@ Arena.prototype.setSpeed = function (v) {
   this.view.refreshSetup(this);
 };
 
-/* 全程时长(ms) = 速度换算出的基准时长 × (n / nRef)，再夹到上下限。
-   两个输入（速度、数据规模）在设置界面就能确定，所以界面上显示的预估
-   与实际开跑的时长【必然一致】—— 不会出现"预估不随数据量变"的误导。 */
-Arena.prototype.raceTargetMs = function () {
-  var s = CONFIG.arena.speed;
-  var t = CONFIG.arena.raceMs;
-  var c = CONFIG.arena.raceMsClamp;
-  var k = (this.speed - s.min) / Math.max(1, s.max - s.min);
-  var base = t.slow + (t.fast - t.slow) * k;
-  var scaled = base * (this.n / Math.max(1, CONFIG.arena.nRef));
-  return Math.max(c.min, Math.min(c.max, scaled));
+/* ---------- 速度与时长 ----------
+   速度沿用主视图的同一个公式（utils.js 的 stepDelayMs）：
+   同一个 speed 值，两边每一步的节奏完全相同，主视图调到多慢，竞技场就有多慢。
+
+   代价是「全程时长不再固定」——它等于「最慢算法的步数 × 单步延时」。
+   这是真实结果，不是估算误差：算法多、规模大、速度慢，本来就该跑得久。
+   界面上的预估值也按这个算，所以开跑前就知道要等多久。 */
+Arena.prototype.stepDelay = function () {
+  return stepDelayMs(this.speed);
+};
+
+/* 预估最慢算法的步数。要真跑一遍各个算法才知道步数，
+   所以按「规模 + 阵容 + 数据」缓存：拖动速度滑块时不会反复重算。 */
+Arena.prototype.estimateMaxSteps = function () {
+  var key = this.n + "|" + this.picked.slice().sort().join(",") + "|" + this.data.join(",");
+  if (this._est && this._est.key === key) return this._est.maxSteps;
+
+  var max = 0;
+  for (var i = 0; i < this.picked.length; i++) {
+    var algo = AlgorithmRegistry.create(this.picked[i]);
+    var steps = algo.run(this.data.slice());
+    if (steps.length > max) max = steps.length;
+  }
+  this._est = { key: key, maxSteps: max };
+  return max;
+};
+
+/* 预估全程时长(ms) = 最慢算法步数 × 单步延时 */
+Arena.prototype.raceEstimateMs = function () {
+  return this.estimateMaxSteps() * this.stepDelay();
 };
 
 Arena.prototype.newData = function () {
@@ -178,7 +201,6 @@ Arena.prototype.prepare = function () {
       cursor: 0,
       state: { data: self.data.slice(), sortedSet: {}, highlight: {} },
       done: false,
-      finishFrame: 0,
       finishMs: 0,
       rank: 0
     };
@@ -188,10 +210,9 @@ Arena.prototype.prepare = function () {
   for (var i = 0; i < this.racers.length; i++) {
     if (this.racers[i].steps.length > this.maxSteps) this.maxSteps = this.racers[i].steps.length;
   }
-  var targetFrames = Math.max(1, this.raceTargetMs() / FRAME_MS);
-  this.stepsPerFrame = this.maxSteps / targetFrames;
-  this.carry = 0;
-  this.frame = 0;
+  this.elapsed = 0;
+  this.stepAcc = 0;
+  this.lastTs = 0;
   this.paused = false;
   this.result = null;
   this.phase = "ready";
@@ -212,8 +233,9 @@ Arena.prototype.prepare = function () {
 Arena.prototype.start = function () {
   if (this.phase !== "ready") return;
   this.phase = "racing";
-  this.frame = 0;
-  this.carry = 0;
+  this.elapsed = 0;
+  this.stepAcc = 0;
+  this.lastTs = 0;
   this.paused = false;
   this.finishedCount = 0;
   this.soundCursor = 0;
@@ -236,26 +258,39 @@ Arena.prototype.stopLoop = function () {
 Arena.prototype.loop = function () {
   var self = this;
   this.stopLoop();
-  this.raf = requestAnimationFrame(function () { self.tick(); });
+  this.raf = requestAnimationFrame(function (ts) { self.tick(ts); });
 };
 
 Arena.prototype.togglePause = function () {
   if (this.phase !== "racing") return;
   this.paused = !this.paused;
   if (this.paused) this.stopLoop();
-  else this.loop();
+  else { this.lastTs = 0; this.loop(); }
   this.view.renderHead(this);
 };
 
-Arena.prototype.tick = function () {
+Arena.prototype.tick = function (ts) {
   if (this.phase !== "racing" || this.paused) return;
 
-  // 累积器：把「每帧不到一步」也平滑地摊开，总时长才恒定
-  this.carry += this.stepsPerFrame;
-  var budget = Math.floor(this.carry);
-  this.carry -= budget;
-  if (budget > CONFIG.arena.maxStepsPerFrame) budget = CONFIG.arena.maxStepsPerFrame;
-  this.frame++;
+  var now = (typeof ts === "number") ? ts
+    : ((window.performance && performance.now) ? performance.now() : Date.now());
+  if (!this.lastTs) this.lastTs = now;
+  var dt = now - this.lastTs;
+  this.lastTs = now;
+  if (!(dt > 0)) dt = 0;
+  if (dt > ARENA_MAX_DT) dt = ARENA_MAX_DT;
+  this.elapsed += dt;
+
+  // 时间累积器：攒够一个「单步延时」才推进 1 步。
+  // 这就是「与主视图同一节奏」的落点 —— 主视图 90ms 一步，这里也是 90ms 一步。
+  var delay = this.stepDelay();
+  this.stepAcc += dt;
+  var budget = Math.floor(this.stepAcc / delay);
+  this.stepAcc -= budget * delay;
+  if (budget > CONFIG.arena.maxStepsPerFrame) {
+    budget = CONFIG.arena.maxStepsPerFrame;
+    this.stepAcc = 0;          // 卡顿 / 切后台回来：丢弃欠账，不追帧
+  }
 
   var alive = 0;
   var finishedNow = [];
@@ -270,8 +305,7 @@ Arena.prototype.tick = function () {
 
     if (rc.cursor >= rc.steps.length) {
       rc.done = true;
-      rc.finishFrame = this.frame;
-      rc.finishMs = this.frame * FRAME_MS;        // 比赛时钟：同帧完赛的算法必然同时刻
+      rc.finishMs = this.elapsed;     // 比赛时钟：同一次 tick 完赛的算法必然同时刻
       finishedNow.push(rc);
     } else {
       alive++;
@@ -333,22 +367,22 @@ Arena.prototype.finish = function () {
   if (this.sound && this.sound.enabled) this.sound.playArenaChampion();
 };
 
-/* 名次 = 完赛帧；同一帧完赛视为并列（竞速排名：1,1,3）。
+/* 名次 = 完赛时刻；同一次 tick 完赛视为并列（竞速排名：1,1,3）。
    并列时的展示顺序再按操作数、最后按声明顺序，保证稳定。 */
 Arena.prototype.assignRanks = function () {
   var list = this.racers.slice();
   list.sort(function (a, b) {
-    if (a.finishFrame !== b.finishFrame) return a.finishFrame - b.finishFrame;
+    if (a.finishMs !== b.finishMs) return a.finishMs - b.finishMs;
     var oa = a.algo.compareCount + a.algo.swapCount;
     var ob = b.algo.compareCount + b.algo.swapCount;
     if (oa !== ob) return oa - ob;
     return a.index - b.index;
   });
-  var rank = 0, prevFrame = -1;
+  var rank = 0, prevMs = -1;
   for (var i = 0; i < list.length; i++) {
-    if (list[i].finishFrame !== prevFrame) {
+    if (list[i].finishMs !== prevMs) {
       rank = i + 1;
-      prevFrame = list[i].finishFrame;
+      prevMs = list[i].finishMs;
     }
     list[i].rank = rank;
   }

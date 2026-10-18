@@ -536,43 +536,48 @@ function multisetEq(a, b) {
     arena.exit();
   });
 
-  check("竞技场速度：滑块范围、时长换算、越慢越久", () => {
+  check("竞技场速度：与主视图共用同一换算式（每步延时）", () => {
     const arena = V.arena;
     arena.enter();
-    // 固定到基准规模：时长会按 (n/nRef) 缩放，不固定的话端点值对不上
-    arena.setN(win.CONFIG.arena.nRef);
     const spd = doc.getElementById("arenaSpeed");
     assert(spd, "设置界面缺少速度滑块");
     assert(Number(spd.min) === win.CONFIG.arena.speed.min &&
       Number(spd.max) === win.CONFIG.arena.speed.max, "速度滑块范围不对");
 
-    arena.setSpeed(win.CONFIG.arena.speed.max);
-    const fastMs = arena.raceTargetMs();
-    arena.setSpeed(win.CONFIG.arena.speed.min);
-    const slowMs = arena.raceTargetMs();
-    assert(slowMs > fastMs, `速度越小应越慢：${slowMs} vs ${fastMs}`);
-    assert(Math.abs(fastMs - win.CONFIG.arena.raceMs.fast) < 1, "最快时应等于 raceMs.fast");
-    assert(Math.abs(slowMs - win.CONFIG.arena.raceMs.slow) < 1, "最慢时应等于 raceMs.slow");
+    // 默认值应与主视图一致 —— 开箱就是同一个节奏
+    assert(arena.speed === V.speed,
+      `竞技场默认速度应与主视图一致，实际 ${arena.speed} vs ${V.speed}`);
 
-    // 界面上要显示换算出的时长（否则用户只知道个数字，不知道到底多快）
+    // 同一个 speed，竞技场算出的单步延时必须等于主视图公式的结果
+    arena.setSpeed(win.CONFIG.speed.max);
+    assert(arena.stepDelay() === win.stepDelayMs(win.CONFIG.speed.max),
+      "最快时每步延时与主视图不一致");
+    assert(arena.stepDelay() === win.CONFIG.delayMin, "speed=100 时应等于 delayMin");
+    arena.setSpeed(win.CONFIG.speed.min);
+    assert(arena.stepDelay() === win.CONFIG.delayBase - win.CONFIG.speed.min * win.CONFIG.delayFactor,
+      "speed=1 时应等于主视图公式");
+
+    // 全程预估 = 最慢算法步数 × 单步延时（先回到最快，再对比"越慢越长"）
+    arena.setSpeed(win.CONFIG.speed.max);
+    const fastMs = arena.raceEstimateMs();
+    assert(fastMs === arena.estimateMaxSteps() * arena.stepDelay(),
+      "全程预估的口径不对（应为 步数 × 单步延时）");
+    arena.setSpeed(1);
+    assert(arena.raceEstimateMs() > fastMs, "速度越慢，全程应越长");
+
+    // 界面要显示「每步多少毫秒」，这样能和主视图直接对照
     const hint = doc.querySelector("#arenaBody .ahint").textContent;
-    assert(/跑完全程/.test(hint), "缺少时长提示，实际：" + hint);
+    assert(/每步 \d+ms/.test(hint), "缺少每步延时提示，实际：" + hint);
 
-    // 回归：预估时长必须随【数据规模】变化 —— 时长恒定会把「大 n 时每秒推进暴涨」藏起来
+    // 预估必须随数据规模变化（步数变多 → 全程变长）
     const nSlider = doc.getElementById("arenaN");
     const before = doc.querySelector("#arenaBody .ahint").textContent;
     nSlider.value = String(win.CONFIG.arena.n.max);
     nSlider.dispatchEvent(new win.Event("input", { bubbles: true }));
     const after = doc.querySelector("#arenaBody .ahint").textContent;
-    assert(before !== after, `改数据规模后预估时长应更新，实际都是 ${before}`);
-    assert(arena.raceTargetMs() > 1000, "大 n 时时长应更长");
+    assert(before !== after, `改数据规模后预估应更新，实际都是 ${before}`);
     nSlider.value = String(win.CONFIG.arena.n.def);
     nSlider.dispatchEvent(new win.Event("input", { bubbles: true }));
-
-    // 越慢时长越长，提示也要跟着变
-    arena.setSpeed(win.CONFIG.arena.speed.max);
-    const hintFast = doc.querySelector("#arenaBody .ahint").textContent;
-    assert(hintFast !== hint, "改速度后时长提示应更新");
 
     arena.setSpeed(win.CONFIG.arena.speed.def);   // 还原，别拖慢后续用例
     arena.exit();

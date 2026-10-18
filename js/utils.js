@@ -5,6 +5,13 @@
    ======================================================================= */
 function $(id) { return document.getElementById(id); }
 
+/* 速度值(1..100) → 单步延时(ms)。主视图与竞技场共用这一个公式：
+   同一个 speed，两边每一步的节奏完全一致（1 → 802ms，100 → 10ms）。 */
+function stepDelayMs(speed) {
+  var d = CONFIG.delayBase - speed * CONFIG.delayFactor;
+  return d < CONFIG.delayMin ? CONFIG.delayMin : d;
+}
+
 function lerp(a, b, t) { return a + (b - a) * t; }
 
 function easeInOutCubic(t) {

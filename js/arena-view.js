@@ -62,7 +62,7 @@ ArenaView.prototype.updateHead = function (arena) {
   } else if (arena.phase === "racing") {
     var done = 0;
     for (var i = 0; i < arena.racers.length; i++) if (arena.racers[i].done) done++;
-    s = "已完赛 " + done + " / " + arena.racers.length + " · " + (arena.frame * FRAME_MS / 1000).toFixed(2) + "s" +
+    s = "已完赛 " + done + " / " + arena.racers.length + " · " + (arena.elapsed / 1000).toFixed(2) + "s" +
         (arena.paused ? " · 已暂停" : "");
   } else {
     s = "比赛结束 · 共 " + arena.racers.length + " 个算法";
@@ -70,12 +70,19 @@ ArenaView.prototype.updateHead = function (arena) {
   this.statusEl.textContent = s;
 };
 
-/* 时长文案：超过 1 分钟显示成「x 分 y 秒」，比一堆秒数好读 */
-ArenaView.prototype.formatRaceMs = function (ms) {
-  var s = Math.round(ms / 1000);
-  if (s < 60) return "≈ " + s + " 秒跑完全程";
-  var m = Math.floor(s / 60), r = s % 60;
-  return "≈ " + m + " 分" + (r ? " " + r + " 秒" : "") + "跑完全程";
+/* 速度文案：先给「每步多少毫秒」——这个数与主视图完全同源，
+   可以直接对照；再给按最慢算法步数算出的全程预估。 */
+ArenaView.prototype.formatSpeedHint = function (arena) {
+  var stepMs = Math.round(arena.stepDelay());
+  var s = Math.round(arena.raceEstimateMs() / 1000);
+  var total;
+  if (s < 60) {
+    total = s + " 秒";
+  } else {
+    var m = Math.floor(s / 60), r = s % 60;
+    total = m + " 分" + (r ? " " + r + " 秒" : "");
+  }
+  return "每步 " + stepMs + "ms · 全程约 " + total;
 };
 
 /* ---------- ① 选择面板 ---------- */
@@ -230,7 +237,7 @@ ArenaView.prototype.refreshSetup = function (arena) {
   if (this.valEl) this.valEl.textContent = String(arena.n);
   if (this.spdEl) this.spdEl.value = String(arena.speed);
   if (this.spdValEl) this.spdValEl.textContent = String(arena.speed);
-  if (this.spdMsEl) this.spdMsEl.textContent = this.formatRaceMs(arena.raceTargetMs());
+  if (this.spdMsEl) this.spdMsEl.textContent = this.formatSpeedHint(arena);
   if (this.dataEl) this.dataEl.textContent = "[" + arena.data.join(", ") + "]";
 
   var canStart = arena.canStart();

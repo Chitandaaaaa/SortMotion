@@ -95,7 +95,7 @@ function cases() {
 console.log("\n== SortMotion 核心逻辑测试 ==\n");
 
 const { sandbox, coreChars } = loadCore();
-const { AlgorithmRegistry, StepType, StepEngine, CONFIG } = sandbox;
+const { AlgorithmRegistry, StepType, StepEngine, CONFIG, stepDelayMs } = sandbox;
 
 const html = fs.readFileSync(path.join(ROOT, "sort-visualizer.html"), "utf8");
 
@@ -178,10 +178,17 @@ check("CONFIG.arena 定义了竞技场参数（规模上限与主视图一致）
   assert(a.max === CONFIG.count.max,
     `竞技场与主视图的规模上限应一致，实际 ${a.max} vs ${CONFIG.count.max}`);
   assert(a.max === 100, "数据规模上限应为 100");
-  assert(CONFIG.arena.raceMs && CONFIG.arena.raceMs.slow > CONFIG.arena.raceMs.fast &&
-    CONFIG.arena.raceMs.fast > 0, "缺少比赛时长区间 raceMs");
   const sp = CONFIG.arena.speed;
   assert(sp && sp.min >= 1 && sp.max > sp.min, "缺少速度区间");
+  // 速度与主视图必须是同一套语义：同一个值 = 同样的每步延时
+  assert(sp.min === CONFIG.speed.min && sp.max === CONFIG.speed.max,
+    `竞技场速度区间应与主视图一致，实际 ${sp.min}..${sp.max} vs ${CONFIG.speed.min}..${CONFIG.speed.max}`);
+  assert(sp.def === CONFIG.speed.def,
+    `竞技场默认速度应与主视图一致，实际 ${sp.def} vs ${CONFIG.speed.def}`);
+  assert(typeof stepDelayMs === "function", "缺少主视图/竞技场共用的 stepDelayMs");
+  assert(stepDelayMs(CONFIG.speed.max) === CONFIG.delayMin, "speed 最大时应等于 delayMin");
+  assert(stepDelayMs(CONFIG.speed.min) === CONFIG.delayBase - CONFIG.speed.min * CONFIG.delayFactor,
+    "speed 最小时应等于 delayBase - speed*delayFactor");
   assert(CONFIG.arena.cellWidth > 0 && CONFIG.arena.cellHeight > 0, "缺少单元格尺寸");
   assert(CONFIG.arena.cellMinHeight > 0 && CONFIG.arena.gridGap >= 0, "缺少单元格下限/间距");
 });

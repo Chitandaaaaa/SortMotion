@@ -454,9 +454,8 @@ Visualizer.prototype.tick = function () {
   this.updateBars();
   this.updateStats();
   if (this.currentStep >= this.steps.length) { this.finish(); return; }
-  var delay = CONFIG.delayBase - this.speed * CONFIG.delayFactor;
-  if (delay < CONFIG.delayMin) delay = CONFIG.delayMin;
-  this.timer = setTimeout(function () { self.tick(); }, delay);
+  // 与竞技场共用同一个速度换算（见 utils.js 的 stepDelayMs）
+  this.timer = setTimeout(function () { self.tick(); }, stepDelayMs(this.speed));
 };
 
 Visualizer.prototype.stepForward = function () {
