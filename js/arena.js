@@ -46,6 +46,14 @@ function Arena(view, hooks) {
   this.raf = null;
   this.result = null;
 
+  // ---- 音效：由 Visualizer 在 init() 里注入同一个 SoundEngine（共用 ON/OFF 开关）----
+  this.sound = null;
+  this.dataMin = 0;
+  this.dataMax = 100;
+  this.soundAt = 0;          // 上次发环境音的时间戳，用于按 soundGapMs 节流
+  this.soundCursor = 0;      // 轮询游标：轮流从还在跑的泳道里取样，避免总是同一条发声
+  this.finishedCount = 0;    // 已冲线数量，用来给冲线音排序
+
   this.applyPreset("all");
 }
 
@@ -188,6 +196,15 @@ Arena.prototype.prepare = function () {
   this.result = null;
   this.phase = "ready";
 
+  // 音高映射区间：全体共用同一份输入，所以取一次即可
+  var mn = Infinity, mx = -Infinity;
+  for (var k = 0; k < this.data.length; k++) {
+    if (this.data[k] < mn) mn = this.data[k];
+    if (this.data[k] > mx) mx = this.data[k];
+  }
+  this.dataMin = isFinite(mn) ? mn : 0;
+  this.dataMax = isFinite(mx) ? mx : 100;
+
   this.view.showRace(this);     // 内部会按 phase 追加居中的 START
 };
 
@@ -198,9 +215,17 @@ Arena.prototype.start = function () {
   this.frame = 0;
   this.carry = 0;
   this.paused = false;
+  this.finishedCount = 0;
+  this.soundCursor = 0;
+  this.soundAt = 0;
   this.view.removeReady();
   this.view.renderHead(this);
   this.view.drawLanes(this);
+  // 这次点击同时是音频解锁手势，起跑信号也在这里发
+  if (this.sound && this.sound.enabled) {
+    this.sound.unlock();
+    this.sound.playArenaStart();
+  }
   this.loop();
 };
 
@@ -233,6 +258,7 @@ Arena.prototype.tick = function () {
   this.frame++;
 
   var alive = 0;
+  var finishedNow = [];
   for (var r = 0; r < this.racers.length; r++) {
     var rc = this.racers[r];
     if (rc.done) continue;
@@ -246,6 +272,7 @@ Arena.prototype.tick = function () {
       rc.done = true;
       rc.finishFrame = this.frame;
       rc.finishMs = this.frame * FRAME_MS;        // 比赛时钟：同帧完赛的算法必然同时刻
+      finishedNow.push(rc);
     } else {
       alive++;
     }
@@ -253,9 +280,47 @@ Arena.prototype.tick = function () {
 
   this.view.drawLanes(this);
   this.view.updateHead(this);
+  if (finishedNow.length) this.soundLaneFinished(finishedNow);
+  this.soundTick();
 
   if (alive === 0) { this.finish(); return; }
   this.loop();
+};
+
+/* 冲线音：同一帧里可能有多条同时到线，用递增的 when 错开，避免糊成一坨 */
+Arena.prototype.soundLaneFinished = function (list) {
+  if (!this.sound || !this.sound.enabled) return;
+  for (var i = 0; i < list.length; i++) {
+    this.finishedCount++;
+    this.sound.playArenaFinishLane(this.finishedCount, this.racers.length, i * 0.05);
+  }
+  // 刚发过冲线音，这一帧的环境音就跳过
+  this.soundAt = (window.performance && performance.now) ? performance.now() : Date.now();
+};
+
+/* 赛场环境音采样：轮询还在跑的泳道，取它刚执行的那一步发声。
+   有 CONFIG.arena.soundGapMs 兜底，无论选几个算法、速度多快，
+   发声频率都稳定在 ~11 音/秒以内。 */
+Arena.prototype.soundTick = function () {
+  var snd = this.sound;
+  if (!snd || !snd.enabled) return;
+
+  var now = (window.performance && performance.now) ? performance.now() : Date.now();
+  if (now - this.soundAt < CONFIG.arena.soundGapMs) return;
+
+  var live = [];
+  for (var i = 0; i < this.racers.length; i++) {
+    if (!this.racers[i].done) live.push(this.racers[i]);
+  }
+  if (!live.length) return;
+
+  var rc = live[this.soundCursor % live.length];
+  this.soundCursor++;
+  var step = rc.steps[rc.cursor - 1];
+  if (!step) return;
+
+  this.soundAt = now;
+  snd.playArenaTick(step, rc.state.data, this.dataMin, this.dataMax);
 };
 
 Arena.prototype.finish = function () {
@@ -265,6 +330,7 @@ Arena.prototype.finish = function () {
   this.assignRanks();
   this.view.drawLanes(this);
   this.view.showResult(this);
+  if (this.sound && this.sound.enabled) this.sound.playArenaChampion();
 };
 
 /* 名次 = 完赛帧；同一帧完赛视为并列（竞速排名：1,1,3）。

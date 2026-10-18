@@ -307,6 +307,8 @@ function multisetEq(a, b) {
     V.reset();
     V.stepForward();
     assert(V.currentStep === 1, "带音效的单步执行异常");
+    // 竞技场必须共用同一个音效引擎（同一个 ON/OFF 开关）
+    assert(V.arena && V.arena.sound === V.sound, "竞技场未接到音效引擎");
   });
 
   check("竞技场：打开 → 选择 → 同屏开跑 → 结算冠亚季", () => {

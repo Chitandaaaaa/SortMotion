@@ -87,15 +87,23 @@ SoundEngine.prototype.setEnabled = function (on) {
   } catch (e) { /* 个别浏览器的 schedule 参数限制，忽略即可 */ }
 };
 
-/* 数值 → 频率：五声音阶，2 个八度（A3 220Hz ~ A5 880Hz）。
-   跨度再大就会刺耳，所以上限卡在 880。 */
+/* 音级 → 频率：level 0..CONFIG.sound.levels，五声音阶，正好 2 个八度。
+   跨度再大就会刺耳，所以上限卡在 880Hz。 */
+SoundEngine.prototype.scaleFreq = function (level) {
+  var max = CONFIG.sound.levels;
+  level = Math.round(level);
+  if (!(level >= 0)) level = 0;
+  if (level > max) level = max;
+  var semi = PENTA[level % 5] + Math.floor(level / 5) * 12;
+  return CONFIG.sound.freqBase * Math.pow(2, semi / 12);
+};
+
+/* 数值 → 频率：把数值归一化到音级上 */
 SoundEngine.prototype.freqOf = function (v, min, max) {
   var t = (max > min) ? (v - min) / (max - min) : 0.5;
   if (!(t >= 0)) t = 0;
   if (t > 1) t = 1;
-  var idx = Math.round(t * CONFIG.sound.levels);   // 0..10 → 11 个音级
-  var semi = PENTA[idx % 5] + Math.floor(idx / 5) * 12;
-  return CONFIG.sound.freqBase * Math.pow(2, semi / 12);
+  return this.scaleFreq(t * CONFIG.sound.levels);   // 0..10 → 11 个音级
 };
 
 /* 发声基元。opt: { freq, to, dur, type, gain, when, force } */
@@ -197,4 +205,79 @@ SoundEngine.prototype.playStep = function (step, arr, min, max, silent) {
   else if (t === StepType.SWAP || t === StepType.SET) this.playSwap(f);
   else if (t === StepType.PIVOT) this.playPivot(f);
   else if (t === StepType.MARK_SORTED) this.playSorted(f);
+};
+
+/* =======================================================================
+   竞技场音效
+
+   赛场和主视图的节奏完全不同：17 条泳道同屏、每帧最多推进 40 步，
+   「一步一音」在这里是不可能的（每秒上千个音 = 噪音墙）。
+   所以改成「赛事播报」：
+     起跑信号 → 稀疏环境音（每 90ms 抽一条泳道）→ 每条泳道冲线「叮」→ 结算琶音
+   ======================================================================= */
+
+/* 起跑信号：三连上行，最后一个音长一点 */
+SoundEngine.prototype.playArenaStart = function () {
+  var levels = [3, 5, 7];
+  for (var i = 0; i < levels.length; i++) {
+    this.tone({
+      freq: this.scaleFreq(levels[i]),
+      dur: i === levels.length - 1 ? 0.16 : 0.09,
+      type: "square",
+      gain: 0.045,
+      when: i * 0.11,
+      force: true
+    });
+  }
+};
+
+/* 赛场环境音：极轻的一层「沙沙」，音高仍随数值走。
+   由 Arena 按 CONFIG.arena.soundGapMs 节流后调用，这里只管发声。 */
+SoundEngine.prototype.playArenaTick = function (step, arr, min, max) {
+  var t = step.type;
+  if (t === StepType.INFO || t === StepType.DONE) return;
+
+  var idx = (step.indices && step.indices.length) ? step.indices[0] : 0;
+  var src = (step.data && step.data.length) ? step.data : arr;
+  var v = src[idx];
+  if (typeof v !== "number" || !isFinite(v)) v = max;
+  var f = this.freqOf(v, min, max);
+
+  if (t === StepType.MARK_SORTED) {
+    this.tone({ freq: f * 1.5, dur: 0.05, type: "sine", gain: 0.02 });
+  } else if (t === StepType.PIVOT) {
+    this.tone({ freq: f * 2, dur: 0.06, type: "sine", gain: 0.02 });
+  } else {
+    this.tone({ freq: f, dur: 0.035, type: "triangle", gain: 0.018 });
+  }
+};
+
+/* 单条泳道冲线：第一个完赛的音最高、越晚越低，听感上是一圈自高到低的「叮」，
+   不用看屏幕也能知道谁先到。when 用于同一帧多条同时冲线时错开。 */
+SoundEngine.prototype.playArenaFinishLane = function (order, total, when) {
+  var t = total > 1 ? (order - 1) / (total - 1) : 0;   // 0 = 第一个完赛
+  this.tone({
+    freq: this.scaleFreq(CONFIG.sound.levels * (1 - t)),
+    dur: 0.18,
+    type: "sine",
+    gain: 0.05,
+    when: when || 0,
+    force: true
+  });
+};
+
+/* 结算：冠军琶音。稍微延后，避免和最后一条冲线的「叮」糊在一起 */
+SoundEngine.prototype.playArenaChampion = function () {
+  var base = 523.25;   // C5
+  var seq = [0, 4, 7, 12];
+  for (var i = 0; i < seq.length; i++) {
+    this.tone({
+      freq: base * Math.pow(2, seq[i] / 12),
+      dur: 0.32,
+      type: "triangle",
+      gain: 0.06,
+      when: 0.12 + i * 0.09,
+      force: true
+    });
+  }
 };

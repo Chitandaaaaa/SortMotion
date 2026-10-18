@@ -96,6 +96,8 @@ Visualizer.prototype.init = function () {
   this.bindControls();
   this.bindTheme();
   this.bindSound();
+  // 竞技场复用同一个音效引擎：SOUND 开关、音量、节流参数对两个视图同时生效
+  this.arena.sound = this.sound;
   this.bindKeyboard();
 
   this.generateData();
