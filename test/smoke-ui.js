@@ -558,6 +558,16 @@ function multisetEq(a, b) {
     assert(arena.stepDelay() === win.CONFIG.turboMs, "竞技场也应固定为 turboMs");
     assert(/20ms/.test(doc.querySelector("#arenaBody .ahint").textContent),
       "面板提示应显示 20ms，实际：" + doc.querySelector("#arenaBody .ahint").textContent);
+    assert(doc.getElementById("arenaSpeed").disabled, "极速时竞技场速度滑块应禁用");
+
+    // 竞技场自己的极速按钮：与主视图是同一个开关
+    const at = doc.getElementById("arenaTurbo");
+    assert(at, "竞技场设置面板缺少极速按钮");
+    at.dispatchEvent(new win.Event("click", { bubbles: true }));
+    assert(!V.turbo && !arena.turbo, "竞技场按钮应能关闭极速并同步主视图");
+    assert(!doc.getElementById("speedRange").disabled, "关闭后主视图滑块应恢复");
+    at.dispatchEvent(new win.Event("click", { bubbles: true }));
+    assert(V.turbo && arena.turbo, "竞技场按钮应能开启极速");
     arena.exit();
 
     V.setTurbo(false);

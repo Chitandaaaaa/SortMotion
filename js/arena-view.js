@@ -191,6 +191,25 @@ ArenaView.prototype.showSetup = function (arena) {
   this.spdValEl = sval;
   this.spdMsEl = sms;
 
+  // 极速：与主视图同一个开关（arena.onTurbo → Visualizer.setTurbo），
+  // 开了之后本场的步速固定 20ms，速度滑块禁用
+  var rowT = document.createElement("div");
+  rowT.className = "arow";
+  rowT.appendChild(this.label("极速"));
+  var turbo = document.createElement("button");
+  turbo.className = "pbtn";
+  turbo.id = "arenaTurbo";
+  turbo.textContent = "20ms/步";
+  turbo.setAttribute("data-tip", "极速模式：固定 20ms/步（50 步/秒），忽略速度滑块；主视图同步生效（快捷键：T）");
+  turbo.addEventListener("click", function () { arena.setTurbo(!arena.turbo); });
+  rowT.appendChild(turbo);
+  var tHint = document.createElement("span");
+  tHint.className = "ahint";
+  rowT.appendChild(tHint);
+  wrap.appendChild(rowT);
+  this.turboEl = turbo;
+  this.turboHintEl = tHint;
+
   // 共用输入预览
   var rowD = document.createElement("div");
   rowD.className = "arow";
@@ -239,6 +258,12 @@ ArenaView.prototype.refreshSetup = function (arena) {
   if (this.spdEl) this.spdEl.value = String(arena.speed);
   if (this.spdValEl) this.spdValEl.textContent = String(arena.speed);
   if (this.spdMsEl) this.spdMsEl.textContent = this.formatSpeedHint(arena);
+  if (this.spdEl) this.spdEl.disabled = !!arena.turbo;
+  if (this.turboEl) {
+    this.turboEl.classList.toggle("on", !!arena.turbo);
+    this.turboEl.textContent = arena.turbo ? "已开启" : "20ms/步";
+  }
+  if (this.turboHintEl) this.turboHintEl.textContent = arena.turbo ? "固定 50 步/秒，忽略速度" : "";
   if (this.dataEl) this.dataEl.textContent = "[" + arena.data.join(", ") + "]";
 
   var canStart = arena.canStart();

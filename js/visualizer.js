@@ -104,6 +104,8 @@ Visualizer.prototype.init = function () {
   // 竞技场复用同一个音效引擎：SOUND 开关、音量、节流参数对两个视图同时生效
   this.arena.sound = this.sound;
   this.arena.turbo = this.turbo;
+  // 竞技场里的「极速」按钮也走同一个开关，两个视图不会出现状态不一致
+  this.arena.onTurbo = function (on) { self.setTurbo(on); };
   this.bindKeyboard();
 
   this.generateData();
@@ -367,6 +369,7 @@ Visualizer.prototype.bindKeyboard = function () {
 Visualizer.prototype.setTurbo = function (on) {
   this.turbo = !!on;
   this.btnTurbo.classList.toggle("on", this.turbo);
+  this.btnTurbo.textContent = this.turbo ? "已开启 · 20ms/步" : "20ms/步";
   this.btnTurbo.setAttribute("data-tip", this.turbo
     ? "极速模式已开启：固定 20ms/步（50 步/秒）。再点一次或按 T 关闭"
     : "极速模式：固定 20ms/步（50 步/秒），忽略 Speed 滑块；主视图与竞技场同时生效（快捷键：T）");

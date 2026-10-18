@@ -55,6 +55,7 @@ function Arena(view, hooks) {
   this.dataMin = 0;
   this.dataMax = 100;
   this.turbo = false;        // 极速模式（由 Visualizer.setTurbo 同步）
+  this.onTurbo = null;       // 打开/关闭极速时的回调，由 Visualizer 注入
   this.soundAt = 0;          // 上次发环境音的时间戳，用于按 soundGapMs 节流
   this.soundCursor = 0;      // 轮询游标：轮流从还在跑的泳道里取样，避免总是同一条发声
   this.finishedCount = 0;    // 已冲线数量，用来给冲线音排序
@@ -126,6 +127,14 @@ Arena.prototype.setN = function (n) {
   this.n = Math.max(r.min, Math.min(r.max, n | 0));
   this.newData();
   this.view.refreshSetup(this);
+};
+
+/* 极速模式：交给 Visualizer 统一开关（主视图与竞技场共用同一个状态），
+   没有挂钩子时（比如单测里）至少保证本场生效。 */
+Arena.prototype.setTurbo = function (on) {
+  if (this.onTurbo) this.onTurbo(!!on);
+  else this.turbo = !!on;
+  if (this.view && this.phase === "setup") this.view.refreshSetup(this);
 };
 
 Arena.prototype.setSpeed = function (v) {
